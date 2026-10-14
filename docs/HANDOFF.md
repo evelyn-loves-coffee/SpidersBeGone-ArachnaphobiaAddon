@@ -1,14 +1,14 @@
 # HANDOFF — resume here (fresh session)
 
-Last updated: **2026-10-13**, after probe round SBG6 and M2 in-game
-verification. The owner is taking a break; a new agent session should start
-with this file.
+Last updated: **2026-10-14**, after M3 implementation (offline-verified).
+A new agent session should start with this file.
 
 ## One-line status
 
-**M1 (API verification) and M2 (load skeleton) are DONE and verified
-in-game.** Next milestone: **M3 — sticky hover shield + parkable shields**.
-M3 is pure implementation: every API it needs is already in-client verified.
+**M1, M2, and the M3 implementation are DONE** (M3: sticky hover shield +
+parkable shields — code + offline tests all pass; **not yet verified
+in-game**). Next step: the **M3 in-game verification protocol** below, then
+M4.
 
 ## Read in this order
 
@@ -19,7 +19,8 @@ M3 is pure implementation: every API it needs is already in-client verified.
    probe).
 2. `docs/API-VERIFICATION.md` — authoritative record of what exists/absent
    on the client (M1 exit record).
-3. `SpidersBeGone/` — the addon (currently M2 skeleton: TOC + Core.lua +
+3. `SpidersBeGone/` — the addon (M3: `Units.lua` predicate, `Cover.lua`
+   24-slot pool + persistence, `Core.lua` driver/slash/lifecycle, TOC,
    art).
 4. `tools/test_core.lua` — offline test harness (run: `lua5.1
    tools/test_core.lua` from the repo root).
@@ -73,38 +74,54 @@ M3 is pure implementation: every API it needs is already in-client verified.
     `/run SBG2={p=function(k,v) print(("SBG2| %s: %s"):format(k,tostring(v))) end}`
     (re-run after any `/reload`; cleanup: `/run SBG2=nil`).
 
-## M3 work order (the next session's job)
+## M3 (code complete 2026-10-14) — in-game verification protocol
 
-1. **Optional:** user runs SBG7 (PLAN §12.10, two short lines) to pick the
-   tick driver: OnUpdate script vs `C_Timer.After(0.1)` self-rescheduling
-   loop. If the user can't run it, ship with the `C_Timer.After` loop
-   (C_Timer confirmed present) — zero risk.
-2. **Implement** per PLAN §3/§4 (new files in `SpidersBeGone/`):
-   - `Units.lua`: tracked tokens + spider predicate —
-     `select(2, UnitCreatureFamily(unit)) == 3` primary; name patterns
-     `{"Spider","Gloomweaver"}` + `extraNames` fallback; `UnitClass(unit) ~=
-     nil` excludes players.
-   - `Cover.lua`: 24-slot frame pool (FIFO), `cover.tga` texture, tint/
-     opacity from settings, draggable, positions persisted in
-     `SBeGoneSettings` per character.
-   - `Core.lua` additions: ~10 Hz tick driver; **sticky hover shield** —
-     hover a spider → cover at cursor (`GetCursorPosition`), cover **sticks**
-     when the mouse leaves (owner requirement: cover *all* spiders);
-     `/spider clear` empties the pool; `/spider on|off`; optional
-     `UNIT_TARGET` event to refresh the tracked set sooner.
-3. **Extend `tools/test_core.lua`** (predicate with stubbed unit APIs, pool
-   FIFO eviction, settings migration) — run under `lua5.1` before every
-   in-game round.
-4. **Reinstall + in-game test protocol:**
-   - `/reload` (no errors), `/spider` (2 selftest lines),
-   - hover a Tirisfal spider → cover appears at cursor; move mouse away →
-     cover **stays**;
-   - drag a cover somewhere; `/reload` → position persists;
-   - `/spider clear` → all covers gone; `/spider off` → nothing appears even
-     while hovering.
-5. **M4 after:** blind mode + panic hotkey (`Bindings.xml` route, §4.5 —
-   verify our XML actually loads via the key-binding UI) + frame cover
-   (`TargetFrame`/`FocusFrame` only).
+Implementation notes (what shipped):
+
+- **Driver:** `C_Timer.After(0.1)` self-rescheduling loop (~10 Hz), per the
+  handoff default — SBG7 (PLAN §12.10) remains optional; if it ever shows
+  OnUpdate scripts are live, only `SBeGone.StartDriver` changes (the tick
+  function is identical). If the tick never runs, check for
+  `SBG| ERROR: C_Timer.After missing` in chat.
+- **Sticky hover:** hover a spider → a cover disc appears at the cursor;
+  mouse leaves → it sticks (sweep across spiders = one stuck cover per
+  spider). Covers are **not click-through** (so they are draggable);
+  a cover under the cursor also ends the hover, which is what makes it
+  stick.
+- **Cursor coordinates:** `GetCursorPosition` is assumed to be in
+  UIParent/BOTTOMLEFT UI space (y from the bottom — SBG5's (206, 409) while
+  pointing at a ground spider supports this). **If covers appear at a
+  vertically mirrored position, flip once:** in `Core.lua` `SBeGone.Update`,
+  `cy = (GetEffectiveScreenInfo() and GetEffectiveScreenInfo() or 1080) - cy`
+  — or more simply: `local sw, sh = GetEffectiveScreenInfo() ... cy = sh - cy`.
+- **Park shields:** first run per character spawns `parkCount` (8) draggable
+  discs in a row near the top; every position (hover-stuck or parked, after
+  dragging) is saved per character in `SBeGoneSettings.covers[char]` and
+  restored on `/reload`/relog. `/spider clear` empties the saved list
+  (an empty *present* list suppresses the default respawn).
+- **Slash:** `/spider [on|off|toggle|clear|help]`, bare = selftest (now 3
+  `SBG|` lines: version/build/Lua, enabled/interface/char/driver/sticky,
+  pool/saved/size).
+- **Offline suite:** `lua5.1 tools/test_core.lua` — 58 checks (migration,
+  predicate, sticky on/off, FIFO eviction, drag sync, epsilon, per-char
+  persistence, slash). Run before every in-game round.
+
+Protocol (user does this part; repo is already installed in `AddOns/`):
+
+1. `/reload` — no errors in chat; addon appears in the AddOns list.
+2. `/spider` — 3 `SBG|` lines; `char=` should show the character name,
+   `covers shown=8/24` (first run: 8 parked discs near the top of the
+   screen).
+3. Hover a Tirisfal spider → a red disc appears over it; move the mouse
+   away → the disc **stays**.
+4. Drag a disc somewhere else; `/reload` → it is still there.
+5. `/spider clear` → all discs gone (and gone after another `/reload`).
+6. `/spider off` → hovering a spider shows nothing; `/spider on` →
+   saved positions come back.
+
+**M4 after this passes:** blind mode + panic hotkey (`Bindings.xml` route,
+§4.5 — verify our XML actually loads via the key-binding UI) + frame cover
+(`TargetFrame`/`FocusFrame` only).
 
 ## Owner decisions still open
 
@@ -128,7 +145,7 @@ the §12 probe set on the release client if the interface number changes
 ## Git
 
 - Everything relevant is committed & pushed (check `git log`; latest:
-  M2 slash fix + SBG5/SBG6 records). Conventions: `main` branch, lowercase
+  M3 implementation + in-game verification protocol). Conventions: `main` branch, lowercase
   conventional-ish messages, tag `v1.0.0` at M6.
 - Art regenerates via `python3 tools/make_art.py` (stdlib only) — no binary
   art is ever hand-edited.

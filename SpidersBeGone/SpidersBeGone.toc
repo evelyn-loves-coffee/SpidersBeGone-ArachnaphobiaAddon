@@ -1,8 +1,10 @@
 ## Interface: 16001
 ## Title: Spiders Be Gone
-## Notes: Arachnaphobia addon for World of Warcraft Forever. UI-layer spider covers (hover shield, parkable shields, blind mode). No model swaps, no game file changes.
-## Version: 0.1.0
+## Notes: UI-layer spider covers for arachnophobia (WoW Forever 1.60.1)
+## Version: 0.2.0
 ## Author: evelyn-loves-coffee
 ## IconTexture: Interface\AddOns\SpidersBeGone\icon.tga
 ## SavedVariables: SBeGoneSettings
+Units.lua
+Cover.lua
 Core.lua

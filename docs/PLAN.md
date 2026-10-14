@@ -452,7 +452,7 @@ State resets on reload, so it can never leave the player permanently hidden.
 | M0 | Repo + this plan | committed, pushed | ✅ done |
 | M1 | In-game API verification (probe rounds SBG1–SBG4, §12) | `docs/API-VERIFICATION.md` written from real sessions | ✅ done (2026-10-13) |
 | M2 | TOC + load skeleton: `SpidersBeGone.toc` (interface 16001), `Core.lua`, SavedVariables, `/spider` selftest, generated icon | addon loads, appears in AddOns list, `/spider` prints build info, `/run` load-check works | ✅ done (2026-10-13: clean `/reload`, `/spider` prints both selftest lines, `/run` load-check = 0.1.0) |
-| M3 | **Hover shield** (auto: cursor-anchored cover while mouseover is a spider) + **parkable shields** (manual draggable covers, positions saved) | hovering a Tirisfal spider hides its model; shields persist across `/reload` and logout | next |
+| M3 | **Hover shield** (auto: cursor-anchored cover while mouseover is a spider) + **parkable shields** (manual draggable covers, positions saved) | hovering a Tirisfal spider hides its model; shields persist across `/reload` and logout | code done 2026-10-14 (offline suite green); pending in-game verification |
 | M4 | **Blind mode** + **panic hotkey** (§4.5) + **frame cover** for target/focus (optional) | panic key instantly hides all covers; frame cover tracks the target frame | — |
 | M5 | Config window (color, opacity, size, extraNames, enable toggles) + SavedVariables polish (migrate/reset/validation) | settings survive logout/reload; corrupt SV self-heals | — |
 | M6 | README, polish, `v1.0.0` tag | install-from-clone instructions verified end-to-end on the Proton client | — |
