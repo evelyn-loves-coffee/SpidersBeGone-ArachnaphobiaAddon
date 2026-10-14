@@ -6,7 +6,8 @@
 - Target client: **World of Warcraft Forever** — official, original, classic-based
   (1.x line) client, version **1.60.1**, with new content. No content or APIs from
   WoW 2.x or later exist on this client.
-- Working copy: `~/Apps/SpidersBeGone`
+- Working copy: local git clone (machine-local path — e.g.
+  `~/Apps/SpidersBeGone-ArachnaphobiaAddon` on the 2026-10-14 machine)
 - In-game install path (verified): `.../World of Warcraft/_classic_beta_/Interface/AddOns/`
   (reachable locally via the `~/Apps/wow/AddOns` symlink).
 

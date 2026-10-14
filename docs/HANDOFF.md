@@ -27,13 +27,16 @@ M3 is pure implementation: every API it needs is already in-client verified.
 
 ## Environment cheat sheet (do NOT re-probe what is verified)
 
-- Repo: `~/Apps/SpidersBeGone` (git `main`, pushed to
-  `github.com/evelyn-loves-coffee/SpidersBeGone-ArachnaphobiaAddon`, public).
+- Repo: local git clone (path is **machine-local** — on the machine from
+  2026-10-13 it was `~/Apps/SpidersBeGone`; on the current machine it is
+  `~/Apps/SpidersBeGone-ArachnaphobiaAddon`), pushed to
+  `github.com/evelyn-loves-coffee/SpidersBeGone-ArachnaphobiaAddon`, public.
 - Install: `rm -rf ~/Apps/wow/AddOns/SpidersBeGone && cp -r
-  ~/Apps/SpidersBeGone/SpidersBeGone ~/Apps/wow/AddOns/` — then the user
-  does `/reload` in-game. (`~/Apps/wow/AddOns` is a symlink into a
-  Steam/Proton pfx: `.../compatdata/2232383472/pfx/drive_c/Program Files
-  (x86)/World of Warcraft/_classic_beta_/Interface/AddOns/`.)
+  <repo>/SpidersBeGone ~/Apps/wow/AddOns/` (substitute the local clone
+  path) — then the user does `/reload` in-game. (`~/Apps/wow/AddOns` is a
+  symlink into a Steam/Proton pfx; the compatdata id is machine-local —
+  current: `.../compatdata/4154337869/pfx/drive_c/Program Files (x86)/World
+  of Warcraft/_classic_beta_/Interface/AddOns/`.)
 - Client: WoW **Forever 1.60.1**, build 70374, **interface 16001**,
   **Lua 5.1**, modern codebase, reduced API set. UI-scaled screen
   1772×1181. Character: Horde Warrior.
