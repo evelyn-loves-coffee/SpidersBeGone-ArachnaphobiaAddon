@@ -55,10 +55,13 @@ local function makeFrame()
 	function f:IsShown() return self.visible end
 	function f:SetParent(_) end
 	function f:SetFrameStrata(_) end
-	function f:SetClampRect(a, b, c, d) self.clamp = { a, b, c, d } end
+	-- Client-faithful (SBG9): SetClampRect and SetSize are ABSENT on this
+	-- client — do not stub them, so any direct call fails the suite the
+	-- same way it fails in-game.
 	function f:EnableMouse(_) end
 	function f:SetMovable(_) end
-	function f:SetSize(w, h) self.size = { w, h } end
+	function f:SetWidth(w) self.size = { w, self.size[2] } end
+	function f:SetHeight(h) self.size = { self.size[1], h } end
 	function f:SetPoint(anchor, relFrame, relPoint, x, y)
 		self.points[1] = {
 			anchor = anchor, relFrame = relFrame, relPoint = relPoint,
@@ -199,6 +202,14 @@ check(SBeGone.ready == true, "enter world: ready")
 check(SBeGone.Cover.inited == true, "enter world: pool inited")
 check(SBeGone.Cover.pool[1].art ~= nil and SBeGone.Cover.pool[1].base ~= nil,
 	"pool: textures created under client-faithful layer validation (SBG8)")
+local sizedSlot
+for i = 1, SBeGone.Cover.MAX do
+	if SBeGone.Cover.pool[i].frame:IsShown() then sizedSlot = i; break end
+end
+check(sizedSlot ~= nil
+	and SBeGone.Cover.pool[sizedSlot].frame.size[1] == 96
+	and SBeGone.Cover.pool[sizedSlot].frame.size[2] == 96,
+	"resize: SetSize absent -> SetWidth/SetHeight fallback (SBG9)")
 check(SBeGone.Cover.ShownCount() == 8, "enter world: 8 default parked shields")
 check(savedCount("TestWarrior") == 8, "enter world: 8 covers saved for character")
 check(SBeGoneSettings.covers["TestWarrior"][1].kind == "park", "enter world: saved kind=park")
@@ -280,6 +291,10 @@ check(savedCount("TestWarrior") == 1 and SBeGoneSettings.covers["TestWarrior"][1
 SBeGone.Cover.Place(di, 777.4, 888.2)
 check(SBeGone.Cover.pool[di].frame.points[1].x == 777,
 	"place: sub-pixel movement ignored (epsilon)")
+SBeGone.Cover.pool[di].frame:SetPoint("CENTER", UIParent, "BOTTOMLEFT", 99999, -50)
+SBeGone.Cover.SyncDrags()
+check(SBeGone.Cover.pool[di].x == 1772 and SBeGone.Cover.pool[di].y == 0,
+	"drags: off-screen drag soft-clamped to screen bounds (SBG9)")
 
 -- ---- per-character persistence -------------------------------------------
 SBeGoneSettings.covers["OtherChar"] = {

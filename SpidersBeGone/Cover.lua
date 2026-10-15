@@ -71,7 +71,9 @@ function C.Size()
 	return (type(s) == "table" and type(s.coverSize) == "number") and s.coverSize or 96
 end
 
--- Keep dragged covers on screen.
+-- Native screen clamp for clients that still have it. SetClampRect is
+-- ABSENT on this client (SBG9: in-game "attempt to call a nil value");
+-- the real keep-on-screen guarantee is the soft clamp in C.SyncDrags.
 function C.Clamp()
 	local sw, sh
 	if GetEffectiveScreenInfo then
@@ -79,7 +81,7 @@ function C.Clamp()
 	end
 	if type(sw) ~= "number" then sw, sh = 1920, 1080 end
 	for i = 1, C.MAX do
-		C.pool[i].frame:SetClampRect(0, sw, 0, sh)
+		pcall(C.pool[i].frame.SetClampRect, C.pool[i].frame, 0, sw, 0, sh)
 	end
 end
 
@@ -133,10 +135,20 @@ function C.Place(i, x, y)
 	end
 end
 
+-- SetSize is absent on old clients (Spoken shims it with SetWidth +
+-- SetHeight, both proven present) — fall back to those.
+local function setSize(frame, w, h)
+	local ok = pcall(frame.SetSize, frame, w, h)
+	if not ok then
+		pcall(frame.SetWidth, frame, w)
+		pcall(frame.SetHeight, frame, h)
+	end
+end
+
 function C.Resize(i, w, h)
 	local slot = C.pool[i]
 	slot.w, slot.h = w, h
-	slot.frame:SetSize(w, h)
+	setSize(slot.frame, w, h)
 	if slot.base then
 		local inset = math.floor(w * 0.35)
 		slot.base:SetPoint("TOPLEFT", slot.frame, "TOPLEFT", inset, inset)
@@ -205,8 +217,14 @@ end
 
 -- Covers are SetMovable frames: when the user drags one, adopt the new
 -- position into pool state and persist it (called every tick).
+-- Soft clamp: SetClampRect is absent on this client (SBG9), so keep each
+-- cover's center inside the screen ourselves — a cover can never be
+-- dragged away and lost.
 function C.SyncDrags()
 	if not C.inited then return end
+	local sw, sh
+	if GetEffectiveScreenInfo then sw, sh = GetEffectiveScreenInfo() end
+	if type(sw) ~= "number" then sw, sh = 1920, 1080 end
 	local changed = false
 	for i = 1, C.MAX do
 		local slot = C.pool[i]
@@ -214,8 +232,14 @@ function C.SyncDrags()
 			local _, _, x, y = slot.frame:GetPoint(0, UIParent, "BOTTOMLEFT")
 			if type(x) == "number"
 				and (math.abs(x - slot.x) > 0.5 or math.abs(y - slot.y) > 0.5) then
+				local liveX, liveY = x, y
+				if x < 0 then x = 0 elseif x > sw then x = sw end
+				if y < 0 then y = 0 elseif y > sh then y = sh end
 				slot.x, slot.y = x, y
 				changed = true
+				if math.abs(liveX - x) > 0.5 or math.abs(liveY - y) > 0.5 then
+					slot.frame:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x, y)
+				end
 			end
 		end
 	end

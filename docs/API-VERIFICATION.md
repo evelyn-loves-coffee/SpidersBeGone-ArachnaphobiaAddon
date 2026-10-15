@@ -98,6 +98,24 @@ registration must be pcall-guarded).
   created first, tinted identically, and sits inside the TGA's opaque
   core, so draw order between the two is visually irrelevant.
 
+## Frames (SBG9, 2026-10-14 — in-game error + Spoken source)
+
+- **`SetClampRect` is ABSENT** (in-game "Cover.lua:82: attempt to call a
+  nil value" — zero hits in the working Spoken addon). Covers are kept
+  on-screen by a **soft clamp in `C.SyncDrags`** instead: the adopted
+  drag position is clamped to the screen bounds and SetPoint back if the
+  cover was dragged past the edge.
+- **`SetSize` is absent on old clients** (Spoken's `RegionMixins` shims
+  it as `SetWidth + SetHeight`; both are proven present via Spoken's
+  `UI/Layout.lua`). Our `C.Resize` pcall-probes `SetSize`, falls back to
+  `SetWidth`/`SetHeight`.
+- **Proven present in-game by the crash location** (all ran before the
+  crash, so they work on this client): `SetParent`, `SetFrameStrata`,
+  `EnableMouse`, `SetMovable`, pcall-probed `CreateTexture(nil,
+  "ARTWORK")`, `SetAllPoints()` (no args). Also proven in Spoken:
+  `SetPoint`, `GetPoint`, `IsShown`, `Show`/`Hide`, `SetScript`,
+  `RegisterEvent`.
+
 ## Spider data (reference specimen)
 
 - Name: "Young Night Web Spider" — level 2 — Tirisfal Glades

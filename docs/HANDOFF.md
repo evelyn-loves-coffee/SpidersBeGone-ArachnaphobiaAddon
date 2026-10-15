@@ -80,6 +80,14 @@ M4.
 11. All probe output should be `SBG|`/`SBG2|`-prefixed via the helper:
     `/run SBG2={p=function(k,v) print(("SBG2| %s: %s"):format(k,tostring(v))) end}`
     (re-run after any `/reload`; cleanup: `/run SBG2=nil`).
+12. **Frame methods absent on this client (SBG9, 2026-10-14):**
+    `SetClampRect` (in-game "attempt to call a nil value", zero hits in
+    Spoken) and `SetSize` (Spoken shims it as `SetWidth`+`SetHeight`,
+    which ARE proven). Covers keep-on-screen via a **soft clamp in
+    `C.SyncDrags`** (adopted drag position clamped to screen bounds).
+    Proven frame methods: `SetParent`, `SetFrameStrata`, `EnableMouse`,
+    `SetMovable`, `SetPoint`, `GetPoint`, `IsShown`, `Show`/`Hide`,
+    `SetScript`, `RegisterEvent`.
 
 ## M3 (code complete 2026-10-14) — in-game verification protocol
 
@@ -105,11 +113,13 @@ Implementation notes (what shipped):
   discs in a row near the top; every position (hover-stuck or parked, after
   dragging) is saved per character in `SBeGoneSettings.covers[char]` and
   restored on `/reload`/relog. `/spider clear` empties the saved list
-  (an empty *present* list suppresses the default respawn).
+  (an empty *present* list suppresses the default respawn). Covers can
+  never be dragged off-screen and lost: `C.SyncDrags` soft-clamps adopted
+  positions to the screen bounds (`SetClampRect` is absent — SBG9).
 - **Slash:** `/spider [on|off|toggle|clear|help]`, bare = selftest (now 3
   `SBG|` lines: version/build/Lua, enabled/interface/char/driver/sticky,
   pool/saved/size).
-- **Offline suite:** `lua5.1 tools/test_core.lua` — 58 checks (migration,
+- **Offline suite:** `lua5.1 tools/test_core.lua` — 59 checks (migration,
   predicate, sticky on/off, FIFO eviction, drag sync, epsilon, per-char
   persistence, slash). Run before every in-game round.
 
