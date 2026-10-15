@@ -4,12 +4,20 @@ Addon for **World of Warcraft Forever** (classic 1.x-line client, v1.60.1) that
 covers spider models with a screen-anchored UI element. UI-layer only: no model
 swaps, no game-file modification.
 
-**Status:** M2 complete (2026-10-13 — loads clean, `/spider` selftest
-verified in-game). Next: M3 (sticky hover shield + parkable shields). See
-[docs/PLAN.md](docs/PLAN.md) for the full design and the confirmed API
-surface of the 1.60.1 client, [docs/HANDOFF.md](docs/HANDOFF.md) for resuming
-from a fresh session, and [docs/API-VERIFICATION.md](docs/API-VERIFICATION.md)
-for the M1 exit record.
+**Status:** M3 in verification (v0.2.2). In game today: parked shields render,
+`mouseover` detection works, drag positions persist, and the two remaining
+M3 bugs are fixed — the spider predicate was rejecting every spider (NPC
+"class" is reported as the unit's name on this client), and cleared cover state
+was being forgotten on reload. The next milestone, **M3.5 — automatic covers on
+visible spiders while you walk, no mouseover** — is blocked on one question:
+finding a *legal* screen position for each visible spider. This addon only ever
+draws its own overlay frames; it does not touch unit models, game files, or the
+client's protected frames (nameplate geometry is deliberately left alone).
+
+See [docs/HANDOFF.md](docs/HANDOFF.md) to resume from a fresh session,
+[docs/PLAN.md](docs/PLAN.md) for the design and the confirmed API surface of the
+1.60.1 client, and [docs/API-VERIFICATION.md](docs/API-VERIFICATION.md) for the
+M1 exit record.
 
 ## Install
 
@@ -19,8 +27,16 @@ log in or `/reload`.
 
 ## Slash command
 
-`/spider` — selftest: prints addon version, client build, Lua version, and
-enabled state. (Full command reference lands with the config features.)
+| Command | Effect |
+| :-- | :-- |
+| `/spider` | selftest: addon version, client build, Lua version, enabled, character, driver, sticky, pool/saved counts |
+| `/spider on` / `off` / `toggle` | enable / disable (covers stay put, hidden) |
+| `/spider clear` | remove all covers and forget this character's saved layout |
+| `/spider parks N` | set the number of pre-parked shields (`0` removes them) |
+| `/spider help` | usage |
+
+Covers stick where the spider was (sticky hover shield), survive `/reload` and
+relog per character, and cannot be dragged off-screen.
 
 ## Developer notes
 
