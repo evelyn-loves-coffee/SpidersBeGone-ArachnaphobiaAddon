@@ -128,6 +128,30 @@ registration must be pcall-guarded).
 - Our OnEvent handler uses `local ev = evt or event` (modern argument
   first, then the old-style global) so it works under either convention.
 
+## Chat text (SBG11, 2026-10-14 — observed in-game)
+
+- **Never print `|` + letter in chat**: the client's chat filter eats
+  chat-control sequences. `/spider help` printed
+  `on|off|toggle|clear|help` and the chat displayed
+  `on|offoggle|cleareIp` — `|t` and `|h` were consumed as control
+  sequences. Our chat output uses ` / ` separators instead; `SBG| ` and
+  ` | ` (pipe with surrounding spaces) are observed safe.
+
+## Frames, display pass & GetPoint (SBG12, 2026-10-15 — observed in-game)
+
+- **`Show()` is deferred to the next display pass.** In-game: first run
+  allocated 8 parks, `IsShown()` was still false when we saved
+  synchronously right after, so the WSV file ended up with
+  `covers[<char>] = {}` while the screen showed 8 covers (selftest:
+  `shown=8/24 saved=0`). Consequence: persistence logic must be based on
+  allocation state (the pool queue), never on `IsShown()` called in the
+  same synchronous block as `Show()`.
+- **`GetPoint` returns 9 values**: (point, relativeToFrame,
+  relativeToPoint, x, y, width, height, absX, absY). The offsets are the
+  4th/5th returns. Unpacking the 3rd/4th gives x = relativeToPoint (a
+  string), which silently disabled drag adoption (our in-game covers never
+  registered a drag). The offline stub now returns all 9 values.
+
 ## Spider data (reference specimen)
 
 - Name: "Young Night Web Spider" — level 2 — Tirisfal Glades

@@ -48,10 +48,14 @@ SlashCmdList = {}
 
 -- frame stub with faithful point/size state (GetPoint round-trips SetPoint,
 -- which the drag-sync logic depends on)
+_G.__frames = {}
 local function makeFrame()
-	local f = { visible = false, points = {}, size = { 0, 0 }, events = {} }
-	function f:Show() self.visible = true end
-	function f:Hide() self.visible = false end
+	local f = { visible = false, pending = false, points = {}, size = { 0, 0 }, events = {} }
+	_G.__frames[#_G.__frames + 1] = f
+	-- Client-faithful (SBG12): Show() is deferred to the next display pass;
+	-- flushDisplay() below simulates that pass.
+	function f:Show() self.pending = true end
+	function f:Hide() self.visible = false; self.pending = false end
 	function f:IsShown() return self.visible end
 	function f:SetParent(_) end
 	function f:SetFrameStrata(_) end
@@ -73,7 +77,10 @@ local function makeFrame()
 		if not p then return nil end
 		if relFrame ~= nil and p.relFrame ~= relFrame then return nil end
 		if relPoint ~= nil and p.relPoint ~= relPoint then return nil end
-		return p.anchor, p.relFrame, p.x, p.y, 0
+		-- Client-faithful (SBG12): (point, relativeToFrame, relativeToPoint,
+		-- x, y, width, height, absX, absY) — offsets are the 4th/5th returns.
+		return p.anchor, p.relFrame, p.relPoint, p.x, p.y,
+			self.size[1], self.size[2], p.x, p.y
 	end
 	-- Client-faithful (SBG8): the native CreateTexture rejects layer names
 	-- it does not know ("bad argument #3 ... self:CreateTexture(params)");
@@ -105,6 +112,18 @@ local function makeFrame()
 	return f
 end
 CreateFrame = function() return makeFrame() end
+
+-- One display pass: commits deferred Show()s (SBG12). The real client does
+-- this every frame; the suite calls it where a frame boundary is guaranteed
+-- before the next observation.
+local function flushDisplay()
+	for _, f in ipairs(_G.__frames) do
+		if f.pending then
+			f.visible = true
+			f.pending = false
+		end
+	end
+end
 
 ------------------------------------------------------------------ settings
 -- Pre-existing (partially corrupt) SV table to verify migration on load.
@@ -174,8 +193,9 @@ out = capture(function() SlashCmdList["SPIDER"]("bogus") end)
 check(#out == 1 and out[1]:find("unknown subcommand 'bogus'") ~= nil,
 	"slash: unknown subcommand message")
 out = capture(function() SlashCmdList["SPIDER"]("help") end)
-check(#out == 1 and out[1]:find("on|off|toggle|clear|help") ~= nil,
-	"slash: help usage line")
+check(#out == 1 and out[1]:find("on / off / toggle / clear / help") ~= nil
+	and out[1]:find("on|") == nil,
+	"slash: help usage line (pipe-free - chat filter, SBG11)")
 
 -- ---- predicate ----------------------------------------------------------
 setUnit("t", { name = "Young Night Web Spider", level = 2, famName = "Spider", famId = 3, id = 1504 })
@@ -225,6 +245,9 @@ check(SBeGone.ready == true, "enter world: ready")
 check(SBeGone.Cover.inited == true, "enter world: pool inited")
 check(SBeGone.Cover.pool[1].art ~= nil and SBeGone.Cover.pool[1].base ~= nil,
 	"pool: textures created under client-faithful layer validation (SBG8)")
+check(savedCount("TestWarrior") == 8,
+	"enter world: parks saved before any display pass (deferred Show, SBG12)")
+flushDisplay()
 local sizedSlot
 for i = 1, SBeGone.Cover.MAX do
 	if SBeGone.Cover.pool[i].frame:IsShown() then sizedSlot = i; break end
@@ -234,7 +257,6 @@ check(sizedSlot ~= nil
 	and SBeGone.Cover.pool[sizedSlot].frame.size[2] == 96,
 	"resize: SetSize absent -> SetWidth/SetHeight fallback (SBG9)")
 check(SBeGone.Cover.ShownCount() == 8, "enter world: 8 default parked shields")
-check(savedCount("TestWarrior") == 8, "enter world: 8 covers saved for character")
 check(SBeGoneSettings.covers["TestWarrior"][1].kind == "park", "enter world: saved kind=park")
 
 -- ---- sticky hover flow --------------------------------------------------
@@ -242,6 +264,7 @@ setUnit("mouseover",
 	{ name = "Young Night Web Spider", level = 2, famName = "Spider", famId = 3, id = 1504 })
 cursor.x, cursor.y = 300, 400
 SBeGone.Tick()
+flushDisplay()
 check(SBeGone.Cover.ShownCount() == 9, "hover: cover allocated (9 shown)")
 local slotIdx, slot = findCover(300, 400)
 check(slotIdx ~= nil and slot.kind == "hover", "hover: cover at cursor, kind=hover")
@@ -261,6 +284,7 @@ setUnit("mouseover",
 	{ name = "Young Night Web Spider", level = 2, famName = "Spider", famId = 3, id = 1504 })
 cursor.x, cursor.y = 500, 500
 SBeGone.Tick()
+flushDisplay()
 check(SBeGone.Cover.ShownCount() == 10, "sticky off: cover allocated")
 clearUnits()
 setUnit("player", { name = "TestWarrior", class = "Warrior" })
@@ -275,6 +299,7 @@ for i = 2, SBeGone.Cover.MAX do
 	SBeGone.Cover.Allocate("hover", 10 + i, 10)
 end
 local extra = SBeGone.Cover.Allocate("hover", 999, 999)
+flushDisplay()
 check(SBeGone.Cover.ShownCount() == 24, "pool: capped at 24")
 check(extra == first, "pool: FIFO evicts the oldest slot")
 check(SBeGone.Cover.pool[extra].x == 999, "pool: evicted slot reused at new position")
@@ -291,6 +316,7 @@ check(SBeGone.Cover.ShownCount() == 0, "on: restore does not respawn after expli
 setUnit("mouseover",
 	{ name = "Young Night Web Spider", level = 2, famName = "Spider", famId = 3, id = 1504 })
 SBeGone.Tick()
+flushDisplay()
 check(SBeGone.Cover.ShownCount() == 1, "on: hover works again")
 SlashCmdList["SPIDER"]("off")
 check(SBeGoneSettings.enabled == false, "off: enabled=false")
@@ -305,6 +331,7 @@ clearUnits()
 SBeGone.Cover.ClearAll()
 SBeGone.Cover.Save()
 local di = SBeGone.Cover.Allocate("hover", 300, 400)
+flushDisplay()
 SBeGone.Cover.pool[di].frame:SetPoint("CENTER", UIParent, "BOTTOMLEFT", 777, 888)
 SBeGone.Cover.SyncDrags()
 check(SBeGone.Cover.pool[di].x == 777 and SBeGone.Cover.pool[di].y == 888,
@@ -328,6 +355,7 @@ SBeGone.char = nil
 clearUnits()
 setUnit("player", { name = "OtherChar", class = "Warrior" })
 SBeGone.OnEnterWorld()
+flushDisplay()
 check(SBeGone.char == "OtherChar", "chars: switched character")
 check(SBeGone.Cover.ShownCount() == 1, "chars: OtherChar's saved cover restored")
 local oc = SBeGone.Cover.pool
@@ -345,6 +373,7 @@ SBeGone.char = nil
 clearUnits()
 setUnit("player", { name = "FreshChar", class = "Warrior" })
 SBeGone.OnEnterWorld()
+flushDisplay()
 check(SBeGone.Cover.ShownCount() == 8, "chars: fresh character gets 8 default parks")
 check(savedCount("FreshChar") == 8, "chars: fresh character's parks saved")
 

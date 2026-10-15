@@ -94,6 +94,14 @@ M4.
     parameter `event` — it shadows the global and the handler silently
     never fires. Our OnEvent uses `local ev = evt or event` (works under
     both conventions).
+14. **Chat filter eats `|` + letter (SBG11, 2026-10-14):** `|toggle` and
+    `|help` in a print became `oggle`/`eIp` in chat (consumed as control
+    sequences). Chat text uses ` / ` separators; ` | ` (spaced) is safe.
+15. **Show() is deferred; GetPoint returns 9 values (SBG12, 2026-10-15):**
+    `IsShown()` is false right after `Show()` until the next display pass —
+    base persistence on allocation state, not IsShown (in-game: 8 covers
+    shown but `saved=0`, WSV had `covers[char] = {}`). `GetPoint` offsets
+    are the 4th/5th returns; mis-unpacking silently killed drag adoption.
 
 ## M3 (code complete 2026-10-14) — in-game verification protocol
 

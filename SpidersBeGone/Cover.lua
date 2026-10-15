@@ -229,7 +229,11 @@ function C.SyncDrags()
 	for i = 1, C.MAX do
 		local slot = C.pool[i]
 		if slot.frame:IsShown() and type(slot.x) == "number" then
-			local _, _, x, y = slot.frame:GetPoint(0, UIParent, "BOTTOMLEFT")
+			-- GetPoint returns (point, relativeToFrame, relativeToPoint, x, y,
+			-- ...) — the offsets are the 4th and 5th returns (SBG12). Reading
+			-- the 3rd/4th (as before) gives x = "BOTTOMLEFT" (a string), so
+			-- drags were never adopted in-game.
+			local _, _, _, x, y = slot.frame:GetPoint(0, UIParent, "BOTTOMLEFT")
 			if type(x) == "number"
 				and (math.abs(x - slot.x) > 0.5 or math.abs(y - slot.y) > 0.5) then
 				local liveX, liveY = x, y
@@ -250,6 +254,11 @@ end
 
 -- Persist the current pool for the current character. An empty (but present)
 -- list means "intentionally cleared" — Restore() will not respawn defaults.
+-- Alloc-based, NOT IsShown-based: on this client Show() is deferred to the
+-- next display pass, so IsShown() is still false when Restore() saves right
+-- after allocating (in-game 2026-10-15: covers shown=8 but saved=0; the
+-- WSV file had covers[<char>] = {}). A slot in C.queue with coordinates is
+-- exactly the allocation state we want to persist.
 function C.Save()
 	local char = SBeGone.char
 	local s = SBeGoneSettings
@@ -258,7 +267,7 @@ function C.Save()
 	local list = {}
 	for _, i in ipairs(C.queue) do
 		local slot = C.pool[i]
-		if slot.frame:IsShown() and type(slot.x) == "number" then
+		if type(slot.x) == "number" and type(slot.y) == "number" then
 			list[#list + 1] = { x = slot.x, y = slot.y, w = slot.w, h = slot.h, kind = slot.kind }
 		end
 	end

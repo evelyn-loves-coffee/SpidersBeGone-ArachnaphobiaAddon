@@ -105,7 +105,9 @@ function SBeGone.Slash(msg)
 		SBeGone.ClearCovers()
 		print("SBG| all covers cleared (saved for this character)")
 	elseif first == "help" then
-		print("SBG| /spider [on|off|toggle|clear|help] - bare /spider = selftest")
+		-- No '|' chars in chat text: the WoW chat filter eats chat-control
+		-- sequences like |t / |h (SBG11) — use ' / ' separators.
+		print("SBG| /spider [on / off / toggle / clear / help] - bare /spider = selftest")
 	else
 		print(("SBG| unknown subcommand '%s' - /spider help for usage"):format(first))
 	end
@@ -145,11 +147,16 @@ end
 local tickInterval = 0.1
 
 function SBeGone.Tick()
-	if SBeGone.ready and SBeGoneSettings.enabled and not SBeGone.hidden then
-		SBeGone.Update()
-	end
+	-- Reschedule FIRST so a one-frame Update error can never kill the
+	-- driver; the error is surfaced in chat instead of dying silently.
 	if C_Timer and C_Timer.After then
 		C_Timer.After(tickInterval, SBeGone.Tick)
+	end
+	if SBeGone.ready and SBeGoneSettings.enabled and not SBeGone.hidden then
+		local ok, err = pcall(SBeGone.Update)
+		if not ok then
+			print("SBG| tick error: " .. tostring(err))
+		end
 	end
 end
 
