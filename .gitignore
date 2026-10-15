@@ -9,3 +9,6 @@ Thumbs.db
 # Build/package output (zip for distribution, generated later)
 dist/
 *.zip
+
+# Session artifact (git fetch recency, per ~/Apps/AGENTS.md)
+.git-fetch-timestamp

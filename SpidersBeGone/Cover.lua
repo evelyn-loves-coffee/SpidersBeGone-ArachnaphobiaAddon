@@ -252,8 +252,14 @@ function C.SyncDrags()
 	end
 end
 
--- Persist the current pool for the current character. An empty (but present)
--- list means "intentionally cleared" — Restore() will not respawn defaults.
+-- Persist the current pool for the current character, as a v2 record:
+--   covers[char] = { init = true, list = { {x,y,w,h,kind}, ... } }
+-- The wrapper is never empty, so an intentional "cleared" state (list = {}) is
+-- still recognizable as "this character has run" after a SavedVariables
+-- round-trip. In the v1 form a cleared character was stored as a bare empty
+-- table, which is indistinguishable from "never ran" the moment the client's
+-- writer/loader drops empty values (SBG13). An empty list means
+-- "intentionally cleared" — Restore() will not respawn defaults.
 -- Alloc-based, NOT IsShown-based: on this client Show() is deferred to the
 -- next display pass, so IsShown() is still false when Restore() saves right
 -- after allocating (in-game 2026-10-15: covers shown=8 but saved=0; the
@@ -271,7 +277,7 @@ function C.Save()
 			list[#list + 1] = { x = slot.x, y = slot.y, w = slot.w, h = slot.h, kind = slot.kind }
 		end
 	end
-	s.covers[char] = list
+	s.covers[char] = { init = true, list = list }
 end
 
 -- Default pre-park layout: a row of shields near the top of the screen.
@@ -285,6 +291,43 @@ local function DefaultParkPos(n, size)
 	return 100 + (n - 1) * (size + gap), sh - 80
 end
 
+-- Read a character's cover list, migrating the v1 bare-list form on the fly.
+-- Returns (list, firstRun); firstRun is true only when there is no record at
+-- all for the character. A v1 table — even an empty one — counts as "has run",
+-- so a cleared character is not re-parked.
+function C.SavedList(s, char)
+	if type(s.covers) ~= "table" then s.covers = {} end
+	local rec = s.covers[char]
+	if type(rec) ~= "table" then
+		return {}, true
+	end
+	if type(rec.list) == "table" then
+		return rec.list, (rec.init ~= true)
+	end
+	local out = {}
+	for _, e in ipairs(rec) do out[#out + 1] = e end
+	s.covers[char] = { init = true, list = out }
+	return out, false
+end
+
+-- Spawn n default pre-parked shields (a row near the top-left).
+function C.Park(n)
+	for k = 1, (n or 0) do
+		local x, y = DefaultParkPos(k, C.Size())
+		C.Allocate("park", x, y)
+	end
+end
+
+-- Release every allocated cover of a kind (used by /spider parks).
+function C.RemoveKind(kind)
+	for q = #C.queue, 1, -1 do
+		local i = C.queue[q]
+		if C.pool[i].kind == kind then
+			C.Release(i)
+		end
+	end
+end
+
 -- Rebuild the pool for a character: saved covers first, then — only on the
 -- character's very first run (no saved list at all) — the default pre-parked
 -- shields. Persists the result.
@@ -293,10 +336,7 @@ function C.Restore(char)
 	SBeGone.char = char
 	C.ClearAll()
 	local s = SBeGoneSettings or {}
-	local byChar = (type(s.covers) == "table") and s.covers or {}
-	local saved = byChar[char]
-	local firstRun = (saved == nil)
-	if firstRun then saved = {} end
+	local saved, firstRun = C.SavedList(s, char)
 	for _, e in ipairs(saved) do
 		if type(e) == "table" and type(e.x) == "number" and type(e.y) == "number" then
 			local i = C.Allocate(e.kind or "hover", e.x, e.y)
@@ -305,12 +345,16 @@ function C.Restore(char)
 			C.Resize(i, w, h)
 		end
 	end
+	local parks = (type(s.parkCount) == "number") and s.parkCount or 8
 	if firstRun then
-		local parks = (type(s.parkCount) == "number") and s.parkCount or 8
-		for n = 1, parks do
-			local x, y = DefaultParkPos(n, C.Size())
-			C.Allocate("park", x, y)
-		end
+		C.Park(parks)
+	end
+	if SBeGone.debug then
+		-- SBG13 diagnostic: one line per restore, so chat alone settles
+		-- whether SavedVariables were applied before we restored.
+		print(("SBG| restore: settingsAtScriptLoad=%s firstRun=%s saved=%d parks=%d"):format(
+			tostring(SBeGone.loadSnapshot and SBeGone.loadSnapshot.settingsPresent),
+			tostring(firstRun), #saved, firstRun and parks or 0))
 	end
 	C.Save()
 end

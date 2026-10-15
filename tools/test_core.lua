@@ -22,7 +22,19 @@ end
 UnitName = function(u) local d = units[u]; return d and d.name end
 GetUnitName = UnitName
 UnitLevel = function(u) local d = units[u]; return (d and d.level) or 0 end
-UnitClass = function(u) local d = units[u]; return d and d.class end
+-- SBG14 (in-game 2026-10-15): UnitClass returns the unit's NAME for
+-- non-player units on this client, so a non-nil return does NOT mean player.
+UnitClass = function(u)
+	local d = units[u]
+	if not d then return nil end
+	if d.player then return d.class end
+	return d.class or d.name
+end
+-- Strict boolean (the guard accepts only == true).
+UnitIsPlayer = function(u)
+	local d = units[u]
+	if d and d.player then return true end
+end
 UnitCreatureFamily = function(u)
 	local d = units[u]
 	if not d then return nil, nil end
@@ -163,13 +175,16 @@ local function findCover(x, y)
 	return nil
 end
 
+-- v2 record form: covers[char] = { init = true, list = { ... } }
 local function savedCount(char)
-	local list = SBeGoneSettings.covers and SBeGoneSettings.covers[char]
-	return list and #list or -1
+	local rec = SBeGoneSettings.covers and SBeGoneSettings.covers[char]
+	if type(rec) ~= "table" then return -1 end
+	local list = (type(rec.list) == "table") and rec.list or rec
+	return #list
 end
 
 -- ---- settings migration (on load) -------------------------------------
-check(SBeGoneSettings.version == 1, "settings: version set to 1")
+check(SBeGoneSettings.version == 2, "settings: version set to 2 (v2 cover records, SBG13)")
 check(SBeGoneSettings.enabled == true, "settings: wrong-type 'enabled' reset to default")
 check(type(SBeGoneSettings.color) == "table", "settings: wrong-type 'color' reset to default")
 check(type(SBeGoneSettings.covers) == "table", "settings: wrong-type 'covers' reset to default")
@@ -193,15 +208,29 @@ out = capture(function() SlashCmdList["SPIDER"]("bogus") end)
 check(#out == 1 and out[1]:find("unknown subcommand 'bogus'") ~= nil,
 	"slash: unknown subcommand message")
 out = capture(function() SlashCmdList["SPIDER"]("help") end)
-check(#out == 1 and out[1]:find("on / off / toggle / clear / help") ~= nil
+check(#out == 1 and out[1]:find("on / off / toggle / clear / parks N / help") ~= nil
 	and out[1]:find("on|") == nil,
 	"slash: help usage line (pipe-free - chat filter, SBG11)")
 
 -- ---- predicate ----------------------------------------------------------
 setUnit("t", { name = "Young Night Web Spider", level = 2, famName = "Spider", famId = 3, id = 1504 })
 check(SBeGone.Units.IsSpider("t") == true, "predicate: family id 3 -> spider")
-setUnit("p", { name = "WarriorGuy", class = "Warrior", famName = "Spider", famId = 3, level = 20 })
-check(SBeGone.Units.IsSpider("p") == false, "predicate: player never covered")
+setUnit("p", { name = "WarriorGuy", class = "Warrior", player = true,
+	famName = "Spider", famId = 3, level = 20 })
+check(SBeGone.Units.IsSpider("p") == false, "predicate: player never covered (UnitIsPlayer)")
+-- SBG14 regression: the client reports an NPC's class as its NAME; that must
+-- not make the guard reject the spider (in-game P3/P4: IsSpider=false).
+check(UnitClass("t") == "Young Night Web Spider",
+	"predicate: client reports NPC 'class' as the unit name (SBG14)")
+check(SBeGone.Units.IsSpider("t") == true,
+	"predicate: spider still detected despite name-as-class report (SBG14)")
+setUnit("player", { name = "WarriorGuy", class = "Warrior", player = true })
+setUnit("p2", { name = "WarriorGuy", famName = "Spider", famId = 3, level = 20 })
+check(SBeGone.Units.IsSpider("p2") == false,
+	"predicate: same name as the player is never covered (name guard)")
+check(SBeGone.Units.IsSpider("t") == true,
+	"predicate: spider detection unaffected by a known player unit")
+clearUnits()
 setUnit("t2", { name = "Gloomweaver", level = 5 })
 check(SBeGone.Units.IsSpider("t2") == true, "predicate: name pattern Gloomweaver")
 setUnit("t3", { name = "Big Bad Spider", level = 10 })
@@ -257,7 +286,10 @@ check(sizedSlot ~= nil
 	and SBeGone.Cover.pool[sizedSlot].frame.size[2] == 96,
 	"resize: SetSize absent -> SetWidth/SetHeight fallback (SBG9)")
 check(SBeGone.Cover.ShownCount() == 8, "enter world: 8 default parked shields")
-check(SBeGoneSettings.covers["TestWarrior"][1].kind == "park", "enter world: saved kind=park")
+local trec = SBeGoneSettings.covers["TestWarrior"]
+check(trec and trec.init == true and type(trec.list) == "table",
+	"save: v2 record written (cleared state cannot look like 'never ran', SBG13)")
+check(trec and trec.list[1].kind == "park", "enter world: saved kind=park")
 
 -- ---- sticky hover flow --------------------------------------------------
 setUnit("mouseover",
@@ -336,7 +368,7 @@ SBeGone.Cover.pool[di].frame:SetPoint("CENTER", UIParent, "BOTTOMLEFT", 777, 888
 SBeGone.Cover.SyncDrags()
 check(SBeGone.Cover.pool[di].x == 777 and SBeGone.Cover.pool[di].y == 888,
 	"drags: dragged position adopted")
-check(savedCount("TestWarrior") == 1 and SBeGoneSettings.covers["TestWarrior"][1].x == 777,
+check(savedCount("TestWarrior") == 1 and SBeGoneSettings.covers["TestWarrior"].list[1].x == 777,
 	"drags: dragged position saved")
 SBeGone.Cover.Place(di, 777.4, 888.2)
 check(SBeGone.Cover.pool[di].frame.points[1].x == 777,
@@ -367,6 +399,9 @@ for i = 1, SBeGone.Cover.MAX do
 end
 check(found, "chars: restored cover size 80x80")
 check(savedCount("TestWarrior") == 1, "chars: TestWarrior's list untouched")
+check(SBeGoneSettings.covers["OtherChar"].init == true
+	and #SBeGoneSettings.covers["OtherChar"].list == 1,
+	"migrate: v1 bare list upgraded to v2 record without losing the cover")
 
 SBeGone.ready = false
 SBeGone.char = nil
@@ -376,6 +411,65 @@ SBeGone.OnEnterWorld()
 flushDisplay()
 check(SBeGone.Cover.ShownCount() == 8, "chars: fresh character gets 8 default parks")
 check(savedCount("FreshChar") == 8, "chars: fresh character's parks saved")
+
+-- ---- /spider parks -------------------------------------------------------
+SBeGone.ready = false
+SBeGone.char = nil
+clearUnits()
+setUnit("player", { name = "TestWarrior", class = "Warrior", player = true })
+SBeGone.OnEnterWorld()
+flushDisplay()
+check(SBeGone.Cover.ShownCount() == 1, "parks: TestWarrior restored (1 cover, no respawn)")
+out = capture(function() SlashCmdList["SPIDER"]("parks") end)
+check(#out == 1 and out[1]:find("parked shields = 8") ~= nil,
+	"parks: bare form reports the count")
+-- /spider parks manages kind="park" covers only; hover-stuck covers stay.
+local function countKind(kind)
+	local n = 0
+	for i = 1, SBeGone.Cover.MAX do
+		local sl = SBeGone.Cover.pool[i]
+		if sl.frame:IsShown() and sl.kind == kind then n = n + 1 end
+	end
+	return n
+end
+SlashCmdList["SPIDER"]("parks 3")
+flushDisplay()
+check(SBeGoneSettings.parkCount == 3, "parks: parkCount set to 3")
+check(countKind("park") == 3,
+	"parks: old parks removed, 3 new parked")
+check(SBeGone.Cover.ShownCount() == 4 and savedCount("TestWarrior") == 4,
+	"parks: hover cover kept alongside the 3 parks, all saved")
+SlashCmdList["SPIDER"]("parks 0")
+flushDisplay()
+check(countKind("park") == 0 and SBeGone.Cover.ShownCount() == 1
+	and savedCount("TestWarrior") == 1,
+	"parks 0: parked shields removed and saved, hover cover untouched")
+
+-- ---- cleared state survives a relog (SBG13 regression) -------------------
+SlashCmdList["SPIDER"]("clear")
+check(SBeGone.Cover.ShownCount() == 0, "clear: all covers hidden")
+SBeGone.ready = false
+SBeGone.char = nil
+SBeGone.OnEnterWorld()
+flushDisplay()
+check(SBeGone.Cover.ShownCount() == 0,
+	"SBG13: cleared character is NOT re-parked on the next restore")
+check(savedCount("TestWarrior") == 0, "SBG13: cleared record stays empty")
+
+-- ---- restore waits for SavedVariables (SBG13 load order) -----------------
+SBeGone.ready = false
+SBeGone.char = nil
+SBeGone.sawVariablesLoaded = nil
+SBeGone.loadSnapshot.settingsPresent = false
+check(SBeGone.OnEnterWorld() == false,
+	"SBG13: restore refused when settings were not applied at script load")
+check(SBeGone.ready == false, "SBG13: still not ready (no guess-restored)")
+_G.this = SBeGone.eventFrame
+_G.event = "VARIABLES_LOADED"
+SBeGone.eventFrame.scripts["OnEvent"]()
+_G.event = nil
+check(SBeGone.sawVariablesLoaded == true and SBeGone.ready == true,
+	"SBG13: VARIABLES_LOADED unlocks the restore")
 
 --------------------------------------------------------------------- result
 if fails > 0 then

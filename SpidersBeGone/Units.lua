@@ -12,9 +12,25 @@ U.NAME_PATTERNS = { "Spider", "Gloomweaver" }
 function U.IsSpider(unit)
 	local s = SBeGoneSettings or {}
 
-	-- 1. Never cover players (IsPlayerUnit absent; UnitClass replaces it, SBG5).
-	if UnitClass and UnitClass(unit) then
+	-- 1. Never cover players.
+	--    SBG14 (in-game 2026-10-15, probe P3): UnitClass on this client
+	--    returns the unit's NAME for non-player units — hovering the test
+	--    spider reported class="Young Night Web Spider". The old "UnitClass is
+	--    non-nil => player" guard therefore rejected EVERY spider (P4:
+	--    IsSpider=false on a confirmed family-3 unit). Guards now, in order:
+	--    a) UnitIsPlayer, accepted only on a strict boolean `true` so an
+	--       implementation that (like UnitClass) returns a name can never
+	--       false-reject a spider;
+	--    b) name equality with our own name (catches players when
+	--       UnitIsPlayer is absent).
+	if UnitIsPlayer and UnitIsPlayer(unit) == true then
 		return false
+	end
+	if UnitName then
+		local uName = UnitName(unit)
+		if uName ~= nil and uName == UnitName("player") then
+			return false
+		end
 	end
 
 	-- 2. Primary: creature family "Spider" (id 3) — confirmed in-client (SBG4).

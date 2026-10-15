@@ -21,14 +21,27 @@ Client facts (docs/PLAN.md §2, verified in-client 2026-10-13):
 ]]
 
 SBeGone = SBeGone or {}
-SBeGone.version = "0.2.1"
+SBeGone.version = "0.2.2"
 
 SBeGone.hidden = nil  -- panic-hide seam (M4); true hides every cover
 SBeGone.ready = false -- true once a character's covers are restored
 
+-- TEMP M3 diagnostic (SBG13): prints one "SBG| restore:" line per restore so
+-- the SavedVariables load order is readable in chat. Drop once the restore
+-- path is confirmed on the release client.
+SBeGone.debug = true
+
+-- Was SBeGoneSettings already populated when our scripts started running?
+-- If it was not, this client may apply SavedVariables after addon Lua, and a
+-- restore done at script-load would read empty settings and take the first-run
+-- branch (SBG13). Restore then waits for VARIABLES_LOADED.
+SBeGone.loadSnapshot = { settingsPresent = (SBeGoneSettings ~= nil) }
+
 -- ---------------------------------------------------------------- settings
 local DEFAULTS = {
-	version = 1,
+	-- v2 schema: covers[char] is a { init = true, list = { ... } } record
+	-- instead of a bare list (SBG13). Migration is lazy, in Cover.SavedList.
+	version = 2,
 	enabled = true,
 	stickyCovers = true,
 	color = { 0.55, 0.12, 0.12 },
@@ -104,10 +117,30 @@ function SBeGone.Slash(msg)
 	elseif first == "clear" then
 		SBeGone.ClearCovers()
 		print("SBG| all covers cleared (saved for this character)")
+	elseif first == "parks" then
+		-- Parked shields are a first-run convenience, not part of the phobia
+		-- protection; let the owner set the count (0 = none) without touching
+		-- SavedVariables by hand.
+		local n = tonumber(string.match(msg or "", "^%s*parks%s+(%S+)"))
+		if not n then
+			print(("SBG| parked shields = %d (set with: /spider parks N - 0 removes them)"):format(
+				SBeGoneSettings.parkCount or 0))
+		elseif not SBeGone.ready then
+			print("SBG| not in a character yet - parked count unchanged")
+		else
+			n = math.floor(n)
+			if n < 0 then n = 0 end
+			if n > SBeGone.Cover.MAX then n = SBeGone.Cover.MAX end
+			SBeGoneSettings.parkCount = n
+			SBeGone.Cover.RemoveKind("park")
+			SBeGone.Cover.Park(n)
+			SBeGone.Cover.Save()
+			print(("SBG| parked shields = %d"):format(n))
+		end
 	elseif first == "help" then
 		-- No '|' chars in chat text: the WoW chat filter eats chat-control
 		-- sequences like |t / |h (SBG11) — use ' / ' separators.
-		print("SBG| /spider [on / off / toggle / clear / help] - bare /spider = selftest")
+		print("SBG| /spider [on / off / toggle / clear / parks N / help] - bare /spider = selftest")
 	else
 		print(("SBG| unknown subcommand '%s' - /spider help for usage"):format(first))
 	end
@@ -128,9 +161,15 @@ function SBeGone.Selftest()
 		SBeGone.version, tostring(major), tostring(minor), tostring(patch), tostring(_VERSION)))
 	local s = SBeGoneSettings
 	local saved = 0
-	if SBeGone.char and type(s.covers) == "table"
-		and type(s.covers[SBeGone.char]) == "table" then
-		for _ in ipairs(s.covers[SBeGone.char]) do saved = saved + 1 end
+	if SBeGone.char and type(s.covers) == "table" then
+		local rec = s.covers[SBeGone.char]
+		local list
+		if type(rec) == "table" then
+			list = (type(rec.list) == "table") and rec.list or rec
+		end
+		if list then
+			for _ in ipairs(list) do saved = saved + 1 end
+		end
 	end
 	print(("SBG| enabled=%s | interface=%s | char=%s | driver=%s | sticky=%s"):format(
 		tostring(s.enabled), tostring(build), tostring(SBeGone.char),
@@ -213,15 +252,38 @@ function SBeGone.Update()
 end
 
 -- ---------------------------------------------------------------- lifecycle
+-- The restore point needs two things: (a) a character, and (b) this account's
+-- SavedVariables actually in hand. (b) is the SBG13 lesson: on 2026-10-15 the
+-- character's list was on disk as "cleared" (covers[char] = {}) yet every
+-- /reload showed the 8 default parks with saved=0 — Restore had taken the
+-- first-run branch, i.e. it ran against settings that did not carry the record.
+-- Until VARIABLES_LOADED has been seen (unless the settings table was already
+-- populated at script load), refuse to restore rather than guess.
 function SBeGone.OnEnterWorld()
-	if SBeGone.ready then return end
+	if SBeGone.ready then return true end
+	if not SBeGone.loadSnapshot.settingsPresent and not SBeGone.sawVariablesLoaded then
+		return false
+	end
 	local char = UnitName and UnitName("player")
-	if not char then return end -- still at character select
+	if not char then return false end -- still at character select
 	SBeGone.char = char
 	SBeGone.ready = true
 	SBeGone.hover = { slot = nil, key = nil }
 	SBeGone.Cover.Restore(char)
 	SBeGone.StartDriver()
+	return true
+end
+
+-- Restore when we can, otherwise ask again for ~10 s (C_Timer.After is proven
+-- present; the no-op in the offline harness makes the retry inert there).
+function SBeGone.RetryEnterWorld()
+	if SBeGone.ready then return end
+	if SBeGone.OnEnterWorld() then return end
+	SBeGone.retries = (SBeGone.retries or 0) + 1
+	if SBeGone.retries >= 20 then return end
+	if C_Timer and C_Timer.After then
+		C_Timer.After(0.5, SBeGone.RetryEnterWorld)
+	end
 end
 
 local function EnsureEventFrame()
@@ -229,6 +291,7 @@ local function EnsureEventFrame()
 	local f = CreateFrame("Frame")
 	-- SBG6-confirmed events only (RegisterEvent errors on unknown names)
 	f:RegisterEvent("PLAYER_ENTERING_WORLD")
+	f:RegisterEvent("VARIABLES_LOADED")
 	f:SetScript("OnEvent", function(_, evt)
 		-- SBG10: this client's native SetScript calls handlers with NO
 		-- arguments — event data arrives via the `this`/`event`/`arg1`..
@@ -236,16 +299,21 @@ local function EnsureEventFrame()
 		-- modern-style clients; the bare global covers this one. A
 		-- parameter named `event` would shadow the global — do not rename.
 		local ev = evt or event
-		if ev == "PLAYER_ENTERING_WORLD" then
-			SBeGone.OnEnterWorld()
+		if ev == "VARIABLES_LOADED" then
+			SBeGone.sawVariablesLoaded = true
+			SBeGone.RetryEnterWorld()
+		elseif ev == "PLAYER_ENTERING_WORLD" then
+			SBeGone.RetryEnterWorld()
 		end
 	end)
 	SBeGone.eventFrame = f
 end
 EnsureEventFrame()
 
--- If we load already in-world (e.g. /reload in character),
--- PLAYER_ENTERING_WORLD will not fire again — enter now.
-if UnitName and UnitName("player") then
+-- If we load already in-world (e.g. /reload in character) AND the settings
+-- were already applied at script load, enter now. Otherwise PLAYER_ENTERING_WORLD
+-- and VARIABLES_LOADED above cover it — restoring any earlier would read empty
+-- settings and re-spawn the default parks over the saved state (SBG13).
+if UnitName and UnitName("player") and SBeGone.loadSnapshot.settingsPresent then
 	SBeGone.OnEnterWorld()
 end
