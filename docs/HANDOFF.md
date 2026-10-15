@@ -1,14 +1,155 @@
 # HANDOFF — resume here (fresh session)
 
-Last updated: **2026-10-14**, after M3 implementation (offline-verified).
+Last updated: **2026-10-15**, after the first in-game M3 round
+(fixes SBG8–SBG12 committed; two open in-game issues, probe battery
+prepared — **next session starts at §Resume**).
 A new agent session should start with this file.
 
 ## One-line status
 
-**M1, M2, and the M3 implementation are DONE** (M3: sticky hover shield +
-parkable shields — code + offline tests all pass; **not yet verified
-in-game**). Next step: the **M3 in-game verification protocol** below, then
-M4.
+**M1, M2, and the M3 implementation are DONE**; client fixes SBG8–SBG12
+are committed (HEAD `9586588`, then version bump to **0.2.1** for build
+identification). M3 in-game verification is **in progress**: covers render
+and parks spawn, but (A) the user's last session still showed `saved=0`
+(build in question — decisive probe prepared) and (B) hovering a spider
+allocated no cover (probe battery prepared, not yet run). Owner's desired
+UX: **covers should track visible spiders as the character walks past
+them, ideally without mouseover** (nameplate-anchored — probes prepared).
+
+## Resume — in-game state as of 2026-10-15 (read this first)
+
+### What the user observed (last in-game session)
+
+- `/reload` → no errors; **8 parked discs** visible top-left.
+- `/spider` → `covers shown=8/24 | saved=0`.
+- `/spider on` → discs **cleared**, 0 restored.
+- Hovering a spider → **no disc appears**.
+- While hovering (mouse still on the spider):
+  - `UnitName("mouseover")` = "Young Night Web Spider" ✓
+  - `SBeGone.Cover.ShownCount()` = 0
+  - 2× manual `SBeGone.Tick()` → still `shown=0`, no `SBG| tick error` line.
+
+### What is verified on disk (no need to re-check)
+
+- Installed addon in `~/Apps/wow/AddOns/SpidersBeGone` **is the new build**
+  (grep-verified: contains the SBG12 `GetPoint` fix; `diff -r` clean vs
+  repo; installed 2026-10-15 02:07).
+- SavedVariables file (readable in play, do NOT edit — outside `AddOns/`):
+  `<pfx>/WTF/Account/810808997#1/SavedVariables/SpidersBeGone.lua`
+  currently holds `covers.Eldette = {}` (empty — the "intentionally
+  cleared" state from the user's `/spider clear` test; written 02:08:20).
+  ⇒ Next login restores **0 parks** (first-run respawn is suppressed by
+  the empty present list). That is expected, not a bug.
+
+### Open issue A — is the client actually running the new build?
+
+The `shown=8, saved=0` pair is the *old* IsShown-based-Save signature;
+the new allocation-based Save cannot produce it. Possible explanations:
+the test ran before the 02:07 install, or `/reload` did not re-execute
+the TOC. **Decisive probe (P1 below):** with discs visible, run a manual
+`C.Save()` and read back the saved count — new build ⇒ 8 entries.
+Selftest line 1 must now say **`v0.2.1`** (bumped specifically to remove
+build ambiguity).
+
+### Open issue B — hover allocates no cover
+
+Chain under test (`Core.lua SBeGone.Update` hover branch):
+`ready` + `enabled` → `U.IsSpider("mouseover")` → `GetCursorPosition()` →
+`C.Allocate`. Suspects, in order:
+1. **`UnitClass("mouseover")` returns non-nil for spiders on this
+   client** → the player-guard in `U.IsSpider` wrongly rejects them
+   (never probed in-game; `UnitName`/`UnitCreatureFamily` on the same
+   token work). If so: replace the guard with a player-**name** comparison
+   (`UnitName("mouseover") == UnitName("player")`), keep `UnitClass` only
+   as secondary.
+2. **`GetCursorPosition()` returns nil / is absent** → hover branch
+   silently skips (it is `and`-guarded, no error). If so: need a different
+   screen position source (the nameplate position doubles as one — see
+   feature below).
+3. Testing artifact: chat focus can drop `mouseover` off the unit; the
+   user held the mouse on the spider, and `UnitName` printed it, so this
+   is less likely but the probe battery re-checks it live.
+4. **Probe pitfall (caused our confusion):** `ShownCount()` is
+   IsShown-based and Show() is deferred (SBG12) — a freshly allocated
+   cover is NOT counted until the next display pass. Signals that DO work
+   immediately: `SBeGone.hover.key` (non-nil = allocated), the visual disc,
+   and `C.Save()` read-back.
+
+### Probe battery (copy-paste to the user; all lines ≤255 chars)
+
+Run after `/reload` (which must show no errors) and after confirming
+selftest line 1 says `v0.2.1`:
+
+**P1 — build/persistence check** (while discs are visible):
+```
+/run SBeGone.Cover.Save() local l=SBeGoneSettings.covers["Eldette"] print("SBG2| manual save: "..tostring(l and #l or "nil").." entries, shown="..tostring(SBeGone.Cover.ShownCount()))
+```
+- `8 entries` → new build confirmed; earlier `saved=0` was a stale-build or
+  load-order artifact → proceed to hover probes.
+- `0 entries` → old code still running → `/reload` again (watch chat for
+  errors); if still 0, re-copy the addon folder and `/reload` again.
+
+**P2–P6 — hover chain** (mouse ON a spider, do not move it between lines):
+
+```
+/run print("SBG2| state: ready="..tostring(SBeGone.ready).." char="..tostring(SBeGone.char).." enabled="..tostring(SBeGoneSettings.enabled))
+```
+```
+/run print("SBG2| unit: name="..tostring(UnitName("mouseover")).." class="..tostring(UnitClass("mouseover")).." fam="..tostring(select(2,UnitCreatureFamily("mouseover"))).." id="..tostring(UnitCreatureID("mouseover")))
+```
+```
+/run print("SBG2| IsSpider="..tostring(SBeGone.Units.IsSpider("mouseover")))
+```
+```
+/run local x,y=GetCursorPosition() print("SBG2| cursor: "..tostring(x).." x "..tostring(y))
+```
+```
+/run SBeGone.Tick() print("SBG2| after tick, hover key: "..tostring(SBeGone.hover.key).." shown="..tostring(SBeGone.Cover.ShownCount()))
+```
+
+Decision tree:
+- P2: all true → continue. `enabled=false` → user left `/spider off` on.
+- P3 `class=`: **nil** → guard fine. **anything else** → suspect #1
+  confirmed → implement name-comparison player guard.
+- P4 `true` + P5 two numbers + P2 true + P6 `hover key=nil` → bug is in
+  `Update`'s placement path; add temporary `SBG|` debug prints in Update
+  (guarded by a `SBeGone.debug` flag) to find the skip.
+- P5 `cursor: nil` → suspect #2 confirmed → choose alternative position
+  source (nameplate anchor, or probe `GetCursorPosition` arg forms).
+- P6 `hover key` non-nil → allocation works; if no disc is visible, check
+  the cover's `SetPoint` values / strata (and the vertical-mirror note in
+  the M3 section).
+
+**NP1–NP2 — nameplate access** (for the auto-cover feature; stand near
+2–3 spiders with nameplates visible):
+
+```
+/run for i=1,32 do local t="nameplate"..i local ok,vis=pcall(UnitIsVisible,t) if ok and vis then local ok2,nm=pcall(UnitName,t) print("SBG2| np"..i.." name="..tostring(nm)) end end
+```
+```
+/run for i=1,32 do local f=_G["nameplate"..i] or _G["NamePlate"..i] if f and f.IsShown and f:IsShown() then local _,_,_,x,y=f:GetPoint(0,UIParent,"BOTTOMLEFT") print("SBG2| frame np"..i.." x="..tostring(x).." y="..tostring(y)) end end
+```
+
+### Owner's desired feature (drives the next build step)
+
+Quote: covers should land on **every spider on screen — some close, some
+far** (screenshot: scattered spiders, nameplates only go so far); and:
+"when I walk past spider enemies, ideally without needing to mouseover, a
+cover unit frame should extend from the existing unit frame and cover the
+enemy model. If automatic anchoring is not possible, mouseover is an
+acceptable backup."
+
+Design (pending NP1/NP2 results): each tick, enumerate nameplate
+units/frames (NP1/NP2 pattern); for each whose unit passes `U.IsSpider`,
+read the nameplate's screen position (frame `GetPoint` — offsets are the
+4th/5th returns, SBG12) and place/track a cover at that position (offset
+below the plate to sit on the model). This reuses the pool, persistence,
+and soft-clamp as-is; nameplates already do the 3D→UI projection the game
+refuses to expose. If NP1+NP2 are both empty: nameplate route is dead →
+mouseover sticky hover stays the only interaction (owner's stated
+fallback) and we say so explicitly.
+
+## M3 (code complete 2026-10-14) — in-game verification protocol
 
 ## Read in this order
 
@@ -40,9 +181,12 @@ M4.
   of Warcraft/_classic_beta_/Interface/AddOns/`.)
 - Client: WoW **Forever 1.60.1**, build 70374, **interface 16001**,
   **Lua 5.1**, modern codebase, reduced API set. UI-scaled screen
-  1772×1181. Character: Horde Warrior.
+  1772×1181. Character: Horde Warrior (test character: **Eldette**).
 - Test spider: "Young Night Web Spider" (NPC **1504**, level 2, Tirisfal
   Glades); `UnitCreatureFamily` → `("Spider", 3)`.
+- SavedVariables **on disk** (readable in play; NEVER edit — outside
+  `AddOns/`): `<pfx>/WTF/Account/810808997#1/SavedVariables/SpidersBeGone.lua`
+  (plus a `.bak`). It is ground truth for what actually persisted.
 
 ## Hard-won client facts (violating these wastes an in-game round)
 
@@ -140,14 +284,20 @@ Implementation notes (what shipped):
 Protocol (user does this part; repo is already installed in `AddOns/`):
 
 1. `/reload` — no errors in chat; addon appears in the AddOns list.
-2. `/spider` — 3 `SBG|` lines; `char=` should show the character name,
-   `covers shown=8/24` (first run: 8 parked discs near the top of the
-   screen).
-3. Hover a Tirisfal spider → a red disc appears over it; move the mouse
+2. `/spider` — 3 `SBG|` lines; line 1 must say **`v0.2.1`** (build check);
+   `char=` shows the character name. NOTE: Eldette's save is currently
+   "intentionally cleared" (`covers.Eldette = {}`), so expect
+   `covers shown=0/24 | saved=0` — NOT 8 parks (the empty present list
+   suppresses first-run respawn; that is correct behavior). A fresh
+   character still gets the 8 default parks.
+3. **P1–P6 + NP1–NP2 probe battery from §Resume above** (resolves the two
+   open issues and the nameplate question). Fix whatever they pin down,
+   re-install, `/reload`, then continue.
+4. Hover a Tirisfal spider → a red disc appears over it; move the mouse
    away → the disc **stays**.
-4. Drag a disc somewhere else; `/reload` → it is still there.
-5. `/spider clear` → all discs gone (and gone after another `/reload`).
-6. `/spider off` → hovering a spider shows nothing; `/spider on` →
+5. Drag a disc somewhere else; `/reload` → it is still there.
+6. `/spider clear` → all discs gone (and gone after another `/reload`).
+7. `/spider off` → hovering a spider shows nothing; `/spider on` →
    saved positions come back.
 
 **M4 after this passes:** blind mode + panic hotkey (`Bindings.xml` route,
@@ -156,6 +306,11 @@ Protocol (user does this part; repo is already installed in `AddOns/`):
 
 ## Owner decisions still open
 
+- **Keep the 8 default parked discs?** Asked 2026-10-15, no answer yet.
+  With nameplate auto-cover they'd likely be clutter. If kept, consider a
+  `/spider parks` reset command (Eldette's cleared state can't be reset
+  from our side — the WSV file is outside `AddOns/` and must not be
+  edited).
 - **Panic hotkey in v1.0?** `KEY_DOWN` route dead (SBG6); `Bindings.xml` is
   the live candidate (needs an in-game key-binding-UI check); `/spider
   hide` is the guaranteed fallback.
@@ -173,10 +328,51 @@ Aim: v1.0.0 (M6: README, polish, tag) before/at the public release. Re-run
 the §12 probe set on the release client if the interface number changes
 (current: 16001).
 
+## Session log
+
+- **2026-10-14:** M3 implemented (f4c8cc6) + offline suite. First in-game
+  round fixed SBG8 (CreateTexture layers), SBG9 (SetClampRect/SetSize
+  absent; soft clamp), SBG10 (no-arg script handlers). User confirmed:
+  no errors on `/reload`, 8 parked discs render, selftest sane, `mouseover`
+  token works (`Young Night Web Spider, fam: 3`).
+- **2026-10-15 (a):** User reported: 8 parks shown but `saved=0`; certain
+  slash sequences removed them; `/spider help` garbled in chat. Fixed
+  **SBG11** (chat filter eats `|`+letter → ` / ` separators), **SBG12**
+  (deferred `Show()` → `C.Save` now allocation-based; `GetPoint` offsets
+  are 4th/5th returns → drags now adopted), tick driver hardened
+  (reschedule-before-update + pcall). WSV file inspection proved the
+  persistence bug (`covers.Eldette = {}` on disk). Committed `9586588`.
+- **2026-10-15 (b):** User retest: still `shown=8 saved=0`, `/spider on`
+  cleared discs, hover allocated nothing. Manual probes: `mouseover` name
+  works, `ShownCount()=0` (deferred-Show ambiguity), manual ticks clean.
+  → Two open issues (A: build in question; B: hover chain) with a
+  prepared probe battery (P1–P6, NP1–NP2) in §Resume. Bumped to **0.2.1**
+  for selftest build identification. Owner restated desired UX: cover
+  visible spiders without mouseover (nameplate-anchored; mouseover =
+  accepted fallback).
+
 ## Git
 
 - Everything relevant is committed & pushed (check `git log`; latest:
-  M3 implementation + in-game verification protocol). Conventions: `main` branch, lowercase
+  `9586588` SBG11/SBG12 fixes + this handoff + 0.2.1 version bump).
+  Conventions: direct to `main` (owner decision), lowercase
   conventional-ish messages, tag `v1.0.0` at M6.
 - Art regenerates via `python3 tools/make_art.py` (stdlib only) — no binary
   art is ever hand-edited.
+
+## Next session, in order
+
+1. User runs the §Resume probe battery (P1 first — build check; then
+   P2–P6 with mouse on a spider; NP1–NP2 near named spiders). Paste all
+   `SBG2|` lines + any `SBG| tick error:` lines.
+2. Interpret with the §Resume decision tree; implement the indicated fix
+   (candidates pre-drafted there: name-comparison player guard; alternate
+   cursor source).
+3. `lua5.1 tools/test_core.lua` (must stay ALL PASS), reinstall
+   (`rm -rf ~/Apps/wow/AddOns/SpidersBeGone && cp -r SpidersBeGone
+   ~/Apps/wow/AddOns/`), `diff -r` verify, commit + push, user `/reload`s.
+4. Finish M3 protocol steps 4–7 (hover stick, drag persist, clear,
+   off/on).
+5. NP1/NP2 results → build nameplate auto-cover (M3.5) or report the
+   route dead → mouseover-only (owner's fallback).
+6. M4: blind mode + panic hotkey (`Bindings.xml` route) + frame cover.

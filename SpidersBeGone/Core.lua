@@ -21,7 +21,7 @@ Client facts (docs/PLAN.md §2, verified in-client 2026-10-13):
 ]]
 
 SBeGone = SBeGone or {}
-SBeGone.version = "0.2.0"
+SBeGone.version = "0.2.1"
 
 SBeGone.hidden = nil  -- panic-hide seam (M4); true hides every cover
 SBeGone.ready = false -- true once a character's covers are restored
