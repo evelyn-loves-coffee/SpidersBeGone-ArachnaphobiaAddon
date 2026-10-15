@@ -14,15 +14,39 @@ C.pool = {}  -- [1..MAX] = { frame, base, art, x, y, w, h, kind }
 C.queue = {} -- allocated slot indices, in allocation order (FIFO)
 C.free = {}  -- free slot indices
 
+-- This client's native CreateTexture is NOT the classic one. Its usage
+-- string is "self:CreateTexture(params)" and it rejects the classic
+-- "BACKGROUND" layer (in-game error 2026-10-14, SBG8: "bad argument #3 to
+-- 'CreateTexture'"), while the working Spoken addon on this client uses the
+-- (nil, "ARTWORK") form. So: try the proven layer first, pcall-guarded.
+local LAYER_CANDIDATES = { "ARTWORK", "ART", "BACKGROUND", "MEDIUM", "LOW", "HIGH", "HIGHLIGHT" }
+local function makeTexture(frame)
+	for _, layer in ipairs(LAYER_CANDIDATES) do
+		local ok, tex = pcall(frame.CreateTexture, frame, nil, layer)
+		if ok and tex then
+			return tex
+		end
+	end
+	local ok, tex = pcall(frame.CreateTexture, frame)
+	if ok and tex then
+		return tex
+	end
+	return nil
+end
+
+-- A cover frame: the shield disc (draggable), the TGA art on top, and a
+-- solid fallback disc under it (same tint, fully inside the TGA's opaque
+-- core — only visible if cover.tga is missing). Both textures get the same
+-- working layer; base is created first so art draws over it.
 local function makeFrame()
 	local f = CreateFrame("Frame")
 	f:SetParent(UIParent)
 	f:SetFrameStrata("HIGH")
 	f:EnableMouse(true)
 	f:SetMovable(true)
-	local base = f:CreateTexture(nil, "BACKGROUND")
-	local art = f:CreateTexture(nil, "ART")
-	art:SetAllPoints(f)
+	local base = makeTexture(f)
+	local art = makeTexture(f)
+	if art then art:SetAllPoints() end
 	f:Hide()
 	return f, base, art
 end
@@ -59,6 +83,16 @@ function C.Clamp()
 	end
 end
 
+-- Vertex tint with a pcall fallback for clients whose SetVertexColor
+-- rejects the optional 4th (alpha) argument.
+local function setTint(tex, r, g, b, a)
+	local ok = pcall(tex.SetVertexColor, tex, r, g, b, a)
+	if not ok then
+		ok = pcall(tex.SetVertexColor, tex, r, g, b)
+		if ok then pcall(tex.SetVertexAlpha, tex, a) end
+	end
+end
+
 -- Tint every cover from settings (red-ish patch, per owner preference).
 function C.ApplyStyle()
 	local s = SBeGoneSettings or {}
@@ -69,11 +103,17 @@ function C.ApplyStyle()
 	local a = (type(s.opacity) == "number") and s.opacity or 0.85
 	for i = 1, C.MAX do
 		local slot = C.pool[i]
-		-- base: small solid disc, fully hidden under the TGA's opaque core;
-		-- becomes the visible fallback if cover.tga is ever missing
-		slot.base:SetTexture(col[1], col[2], col[3], a)
-		slot.art:SetTexture(C.ART_PATH)
-		slot.art:SetVertexColor(col[1], col[2], col[3], a)
+		if slot.base then
+			-- base: small solid disc, fully hidden under the TGA's opaque
+			-- core; becomes the visible fallback if cover.tga is ever
+			-- missing. SetTexture(r,g,b,a) numeric form = the modern
+			-- signature used by Spoken on this client.
+			slot.base:SetTexture(col[1], col[2], col[3], a)
+		end
+		if slot.art then
+			slot.art:SetTexture(C.ART_PATH)
+			setTint(slot.art, col[1], col[2], col[3], a)
+		end
 	end
 end
 
@@ -97,9 +137,11 @@ function C.Resize(i, w, h)
 	local slot = C.pool[i]
 	slot.w, slot.h = w, h
 	slot.frame:SetSize(w, h)
-	local inset = math.floor(w * 0.35)
-	slot.base:SetPoint("TOPLEFT", slot.frame, "TOPLEFT", inset, inset)
-	slot.base:SetPoint("BOTTOMRIGHT", slot.frame, "BOTTOMRIGHT", -inset, -inset)
+	if slot.base then
+		local inset = math.floor(w * 0.35)
+		slot.base:SetPoint("TOPLEFT", slot.frame, "TOPLEFT", inset, inset)
+		slot.base:SetPoint("BOTTOMRIGHT", slot.frame, "BOTTOMRIGHT", -inset, -inset)
+	end
 end
 
 -- Take a slot from the pool (free list first, else evict the oldest = FIFO).

@@ -68,6 +68,36 @@ registration must be pcall-guarded).
   spiders). → **3D-follow cover is infeasible on this client; UI-anchored
   design is final (PLAN.md §3.0).** `C_Map.ScreenToPosition` also absent.
 
+## Textures (SBG8, 2026-10-14 — in-game error + Spoken source)
+
+- **Native `CreateTexture` is not the classic one.** Usage string:
+  `local texture = self:CreateTexture(params)`. The classic call
+  `frame:CreateTexture(nil, "BACKGROUND")` → in-game error `bad argument
+  #3 to '?'` — **the classic `"BACKGROUND"` layer name is rejected on this
+  client** (caught when the M3 build first loaded).
+- **Layers proven on this client:** `"ARTWORK"` and `"HIGHLIGHT"` — the
+  working Spoken addon's vanilla branch (its `Compat.lua`,
+  `Version.IsLegacyVanilla`) calls the native `self:_CreateTexture(nil,
+  "ARTWORK")` / `(nil, "HIGHLIGHT")` for SetNormalTexture/
+  SetHighlightTexture. `"BACKGROUND"` appears only in Spoken's *mainline*
+  branch.
+- **Region methods proven** (Spoken vanilla branch, same client):
+  `SetTexture(path)` string form, `SetTexture(r, g, b, a)` numeric form,
+  `SetVertexColor(r, g, b)`, `SetAllPoints()` (no args), `SetPoint(...)`,
+  `SetSize`, `Show`/`Hide`.
+- **Spoken replaces the global `CreateFrame`**, installing mixins/overrides
+  on returned frames (`CreateTexture(name, layer)` wrapping native
+  `_CreateTexture`, plus `SetScript`/`HookScript`/`SetShown`/`SetSize`
+  shims). Addons calling the global `CreateFrame` after Spoken loads get
+  the shim; ours does not depend on it (we load alphabetically before
+  Spoken and use the native API directly).
+- **Our code's handling (Cover.lua):** `makeTexture` pcall-probes
+  `CreateTexture(nil, layer)` with layers in order `ARTWORK, ART,
+  BACKGROUND, MEDIUM, LOW, HIGH, HIGHLIGHT`, then a no-arg call. Both
+  cover textures share the first working layer; the fallback disc is
+  created first, tinted identically, and sits inside the TGA's opaque
+  core, so draw order between the two is visually irrelevant.
+
 ## Spider data (reference specimen)
 
 - Name: "Young Night Web Spider" — level 2 — Tirisfal Glades

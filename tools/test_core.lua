@@ -72,12 +72,21 @@ local function makeFrame()
 		if relPoint ~= nil and p.relPoint ~= relPoint then return nil end
 		return p.anchor, p.relFrame, p.x, p.y, 0
 	end
-	function f:CreateTexture(_, _)
+	-- Client-faithful (SBG8): the native CreateTexture rejects layer names
+	-- it does not know ("bad argument #3 ... self:CreateTexture(params)");
+	-- only the layers proven on this client are accepted (Spoken's working
+	-- vanilla branch uses "ARTWORK" and "HIGHLIGHT").
+	local VALID_LAYERS = { ARTWORK = true, HIGHLIGHT = true }
+	function f:CreateTexture(_, layer)
+		if layer ~= nil and not VALID_LAYERS[layer] then
+			error("bad argument #3 to 'CreateTexture' (Usage: local texture = self:CreateTexture(params))", 0)
+		end
 		local tex = {}
 		function tex:SetAllPoints(_) end
-		function tex:SetPoint(_) end
-		function tex:SetTexture(_) end
-		function tex:SetVertexColor(_) end
+		function tex:SetPoint(...) end
+		function tex:SetTexture(...) end
+		function tex:SetVertexColor(...) end
+		function tex:SetVertexAlpha(_) end
 		return tex
 	end
 	function f:SetScript(_, _) end
@@ -188,6 +197,8 @@ setUnit("player", { name = "TestWarrior", class = "Warrior" })
 SBeGone.OnEnterWorld()
 check(SBeGone.ready == true, "enter world: ready")
 check(SBeGone.Cover.inited == true, "enter world: pool inited")
+check(SBeGone.Cover.pool[1].art ~= nil and SBeGone.Cover.pool[1].base ~= nil,
+	"pool: textures created under client-faithful layer validation (SBG8)")
 check(SBeGone.Cover.ShownCount() == 8, "enter world: 8 default parked shields")
 check(savedCount("TestWarrior") == 8, "enter world: 8 covers saved for character")
 check(SBeGoneSettings.covers["TestWarrior"][1].kind == "park", "enter world: saved kind=park")

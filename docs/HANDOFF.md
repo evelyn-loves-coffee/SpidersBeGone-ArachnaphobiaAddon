@@ -70,7 +70,14 @@ M4.
 9. The client's own UI code is packed (unreadable on disk — `Interface/`
    contains only `AddOns/`). The Spoken addon (`~/Apps/wow/AddOns/Spoken/`)
    is the best working reference for client conventions.
-10. All probe output should be `SBG|`/`SBG2|`-prefixed via the helper:
+10. **Native `CreateTexture` ≠ classic (SBG8, 2026-10-14):** usage `self:
+    CreateTexture(params)`; the classic `"BACKGROUND"` layer is **rejected**
+    ("bad argument #3"). Proven layers on this client: `"ARTWORK"`,
+    `"HIGHLIGHT"` (Spoken's vanilla branch). Region methods proven: 
+    `SetTexture(path)`, `SetTexture(r,g,b,a)`, `SetVertexColor(r,g,b)`, 
+    `SetAllPoints()` (no args). Our `Cover.lua` pcall-probes layers
+    (ARTWORK first) instead of assuming.
+11. All probe output should be `SBG|`/`SBG2|`-prefixed via the helper:
     `/run SBG2={p=function(k,v) print(("SBG2| %s: %s"):format(k,tostring(v))) end}`
     (re-run after any `/reload`; cleanup: `/run SBG2=nil`).
 
