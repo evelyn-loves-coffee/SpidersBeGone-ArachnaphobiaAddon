@@ -116,6 +116,18 @@ registration must be pcall-guarded).
   `SetPoint`, `GetPoint`, `IsShown`, `Show`/`Hide`, `SetScript`,
   `RegisterEvent`.
 
+## Scripts (SBG10, 2026-10-14 — Spoken source)
+
+- **Native `SetScript` calls handlers with NO arguments.** Event data
+  arrives via the globals `this`, `event`, `arg1`..`arg9` — proven by
+  Spoken's Compat.lua `FrameOverrides:SetScript`, which wraps every
+  handler as `function() handler(this, event, arg1, ...) end` before the
+  native `_SetScript`. A handler that declares an `event` parameter
+  receives nil and its event check never matches — a *silent* failure
+  (no error, addon just never initializes from the event).
+- Our OnEvent handler uses `local ev = evt or event` (modern argument
+  first, then the old-style global) so it works under either convention.
+
 ## Spider data (reference specimen)
 
 - Name: "Young Night Web Spider" — level 2 — Tirisfal Glades

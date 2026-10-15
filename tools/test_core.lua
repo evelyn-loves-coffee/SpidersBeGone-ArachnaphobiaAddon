@@ -92,7 +92,15 @@ local function makeFrame()
 		function tex:SetVertexAlpha(_) end
 		return tex
 	end
-	function f:SetScript(_, _) end
+	function f:SetScript(script, handler)
+		self.scripts = self.scripts or {}
+		-- Client-faithful (SBG10): the native SetScript calls handlers
+		-- with NO arguments; event data arrives via the `this`/`event`/
+		-- `arg1`..`arg9` globals (Spoken's Compat.lua override proves
+		-- the convention). Firing an event = set the globals, call the
+		-- stored wrapper.
+		self.scripts[script] = function() handler() end
+	end
 	function f:RegisterEvent(e) self.events[#self.events + 1] = e end
 	return f
 end
@@ -194,8 +202,23 @@ check(SBeGone.Units.IsSpider("t6") == true, "predicate: requireHostile + hostile
 SBeGoneSettings.requireHostile = false
 clearUnits()
 
--- ---- enter world (first run: default pre-parked shields) ---------------
+-- ---- enter world via PLAYER_ENTERING_WORLD (SBG10) ----------------------
+-- Fresh-login state: no player at TOC load, so the event must do the
+-- work. The client calls the OnEvent handler with NO args — the event
+-- name arrives via the `event` global.
+check(SBeGone.eventFrame ~= nil, "event frame created at load")
+check(SBeGone.ready == false, "event: not ready before PLAYER_ENTERING_WORLD")
 SBeGoneSettings.parkCount = 8
+setUnit("player", { name = "TestWarrior", class = "Warrior" })
+_G.this = SBeGone.eventFrame
+_G.event = "PLAYER_ENTERING_WORLD"
+SBeGone.eventFrame.scripts["OnEvent"]()
+_G.event = nil
+check(SBeGone.ready == true and SBeGone.char == "TestWarrior",
+	"event: PLAYER_ENTERING_WORLD initializes via globals (SBG10)")
+
+-- ---- enter world (first run: default pre-parked shields) ---------------
+-- (OnEnterWorld is a guarded no-op here — the event already entered.)
 setUnit("player", { name = "TestWarrior", class = "Warrior" })
 SBeGone.OnEnterWorld()
 check(SBeGone.ready == true, "enter world: ready")

@@ -222,8 +222,14 @@ local function EnsureEventFrame()
 	local f = CreateFrame("Frame")
 	-- SBG6-confirmed events only (RegisterEvent errors on unknown names)
 	f:RegisterEvent("PLAYER_ENTERING_WORLD")
-	f:SetScript("OnEvent", function(_, event)
-		if event == "PLAYER_ENTERING_WORLD" then
+	f:SetScript("OnEvent", function(_, evt)
+		-- SBG10: this client's native SetScript calls handlers with NO
+		-- arguments — event data arrives via the `this`/`event`/`arg1`..
+		-- globals (proven by Spoken's Compat.lua override). `evt` covers
+		-- modern-style clients; the bare global covers this one. A
+		-- parameter named `event` would shadow the global — do not rename.
+		local ev = evt or event
+		if ev == "PLAYER_ENTERING_WORLD" then
 			SBeGone.OnEnterWorld()
 		end
 	end)

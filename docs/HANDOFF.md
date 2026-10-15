@@ -88,6 +88,12 @@ M4.
     Proven frame methods: `SetParent`, `SetFrameStrata`, `EnableMouse`,
     `SetMovable`, `SetPoint`, `GetPoint`, `IsShown`, `Show`/`Hide`,
     `SetScript`, `RegisterEvent`.
+13. **Script handlers are called with NO arguments (SBG10, 2026-10-14):**
+    event data arrives via the globals `this`/`event`/`arg1`..`arg9`
+    (Spoken's Compat.lua wraps handlers accordingly). Never name a handler
+    parameter `event` — it shadows the global and the handler silently
+    never fires. Our OnEvent uses `local ev = evt or event` (works under
+    both conventions).
 
 ## M3 (code complete 2026-10-14) — in-game verification protocol
 
@@ -119,7 +125,7 @@ Implementation notes (what shipped):
 - **Slash:** `/spider [on|off|toggle|clear|help]`, bare = selftest (now 3
   `SBG|` lines: version/build/Lua, enabled/interface/char/driver/sticky,
   pool/saved/size).
-- **Offline suite:** `lua5.1 tools/test_core.lua` — 59 checks (migration,
+- **Offline suite:** `lua5.1 tools/test_core.lua` — 62 checks (migration,
   predicate, sticky on/off, FIFO eviction, drag sync, epsilon, per-char
   persistence, slash). Run before every in-game round.
 
