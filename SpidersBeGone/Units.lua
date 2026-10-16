@@ -4,6 +4,7 @@ SBeGone = SBeGone or {}
 
 local U = {}
 SBeGone.Units = U
+local A = SBeGone.Access
 
 -- Fragments carried over from the pre-database releases, kept as a UNION with
 -- the owner's list so upgrading never loses coverage of something an older
@@ -44,6 +45,7 @@ end
 -- Spider predicate (PLAN §3.1). `unit` is a tracked unit token.
 function U.IsSpider(unit)
 	local s = SBeGoneSettings or {}
+	if not A.UnitReadable(unit) then return false end
 
 	-- 1. Never cover players.
 	--    SBG14 (in-game 2026-10-15, probe P3): UnitClass on this client
@@ -56,12 +58,12 @@ function U.IsSpider(unit)
 	--       false-reject a spider;
 	--    b) name equality with our own name (catches players when
 	--       UnitIsPlayer is absent).
-	if UnitIsPlayer and UnitIsPlayer(unit) == true then
+	if A.Query(UnitIsPlayer, unit) == true then
 		return false
 	end
 	if UnitName then
-		local uName = UnitName(unit)
-		if uName ~= nil and uName == UnitName("player") then
+		local uName = A.Query(UnitName, unit)
+		if uName ~= nil and uName == A.Query(UnitName, "player") then
 			return false
 		end
 	end
@@ -76,7 +78,7 @@ function U.IsSpider(unit)
 	local isSpider = false
 	local db = SBeGone.DB and SBeGone.DB.ids
 	if db and UnitCreatureID then
-		local id = UnitCreatureID(unit)
+		local id = A.Query(UnitCreatureID, unit)
 		if type(id) == "number" and db[id] == true then
 			isSpider = true
 		end
@@ -85,7 +87,7 @@ function U.IsSpider(unit)
 	-- 3. Primary for unlisted units: creature family "Spider" (id 3) —
 	--    confirmed in-client (SBG4) and on nameplate tokens (NP1, 2026-10-15).
 	if UnitCreatureFamily then
-		local _, famId = UnitCreatureFamily(unit)
+		local _, famId = A.Query(UnitCreatureFamily, unit)
 		if famId == 3 then
 			isSpider = true
 		end
@@ -99,11 +101,11 @@ function U.IsSpider(unit)
 	if not isSpider then
 		local name
 		if UnitName then
-			name = UnitName(unit)
+			name = A.Query(UnitName, unit)
 		elseif GetUnitName then
-			name = GetUnitName(unit)
+			name = A.Query(GetUnitName, unit)
 		end
-		if name then
+		if type(name) == "string" then
 			local lower = name:lower()
 			for _, pat in ipairs(namePatterns()) do
 				if lower:find(pat, 1, true) then
@@ -127,7 +129,8 @@ function U.IsSpider(unit)
 	end
 
 	-- 5. Level window.
-	local lvl = (UnitLevel and UnitLevel(unit)) or 0
+	local lvl = A.Query(UnitLevel, unit)
+	if type(lvl) ~= "number" then return false end
 	local minL = (type(s.minLevel) == "number") and s.minLevel or 1
 	local maxL = (type(s.maxLevel) == "number") and s.maxLevel or 99
 	if lvl < minL or lvl > maxL then
@@ -137,7 +140,7 @@ function U.IsSpider(unit)
 	-- 6. Optional hostile-only gate. UnitCanAttack is TWO-ARG on this client
 	--    (SBG5): UnitCanAttack("player", unit) = "can I attack it".
 	if s.requireHostile then
-		if not (UnitCanAttack and UnitCanAttack("player", unit)) then
+		if A.Query(UnitCanAttack, "player", unit) ~= true then
 			return false
 		end
 	end

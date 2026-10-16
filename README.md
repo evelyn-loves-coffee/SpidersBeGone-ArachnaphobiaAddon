@@ -1,22 +1,25 @@
 # Spiders Be Gone — Arachnaphobia Addon
 
 Addon for **World of Warcraft Forever** (classic 1.x-line client, v1.60.1) that
-covers spider models with a screen-anchored UI element. UI-layer only: no model
+covers spider models with a nameplate-attached UI element. UI-layer only: no model
 swaps, no game-file modification.
 
-**Status:** M3 verified in game; **M3.5 auto-track implemented, awaiting its
-first in-game round (v0.2.3)**. Walk up to a spider and a cover appears over it,
-**follows it and grows as you get closer**, with no targeting and no mouseover —
-the cover is *anchored to the spider's nameplate*, so the client does the moving
-and scaling for us. `mouseover`-sticky covers (v0.2.2) stay as the fallback
-mode (`/spider auto off`).
+**Status: v0.2.5 native overlays, offline tested; in-game verification pending.**
+Tracked covers are now **children of the spider's nameplate**, so native
+movement and scale apply to the cover and its offset between polling ticks.
+The public unit-to-nameplate mapper is preferred; a metadata fallback requires
+an exact unit match. Forbidden frames and secret values are skipped. Rejected
+cleanup defers reuse of that frame, and repeated errors pause automatic covers
+instead of switching detection modes. `mouseover`-sticky covers remain available
+when explicitly selected with `/spider auto off`.
 
 **Safety boundary (owner rule).** This addon draws its own overlay frames and
 reads public unit information. It never modifies unit models, names, combat
 behaviour, game files, or the client's own frames, and it does not use taint
-workarounds. Nameplate *geometry* is client-protected and is deliberately never
-measured — anchoring to a plate is allowed, reading a plate's coordinates is
-not, and the code is written around that fact. Covers are **click-through**: you
+workarounds. The addon never reads a plate's screen coordinates. Attachment is
+used only when the client accepts it. Optional width/scale readings are checked
+for accessibility; unavailable readings fall back to configured dimensions.
+Covers are **click-through**: you
 can run, click and target straight through them (`/spider arrange` is the only
 mode that takes the mouse, for lining shields up).
 
@@ -27,9 +30,57 @@ M1 exit record.
 
 ## Install
 
-Copy the `SpidersBeGone/` folder from this repo into the client's
-`Interface/AddOns/` directory (on this machine: `~/Apps/wow/AddOns/`), then
-log in or `/reload`.
+Extract the fixed ZIP and replace the `SpidersBeGone/` folder in your client's
+`Interface/AddOns/` directory, then log in or `/reload`. The `.toc` must be at
+`Interface/AddOns/SpidersBeGone/SpidersBeGone.toc`, without an extra nested
+repository folder. `/spider` should report **v0.2.5**.
+
+Enable enemy nameplates in the game, then run `/spider on`,
+`/spider arrange off`, and `/spider auto on`. Old saved screen covers can be
+removed with `/spider clear` (this also removes hand-parked shields); automatic
+covers return on the next update. Tune the coverage with `/spider grow 2`
+and `/spider drop 0.9` as needed.
+
+The cover follows the visible nameplate. Stacking or screen-edge clamping by
+the game can move a nameplate away from the model; this client exposes no usable
+world-to-screen projection to correct that independently. Exact model coverage
+still needs an in-game check while moving, rotating the camera, and zooming.
+`/spider` reports `limited=true` when a checked value/frame is inaccessible,
+and `paused=true` after repeated failures. `/spider auto on` explicitly retries
+automatic covers. See [docs/NATIVE-OVERLAYS.md](docs/NATIVE-OVERLAYS.md).
+
+## NoSpider inspiration and Classic data
+
+Spiders Be Gone is an independent **spiritual successor to the accessibility
+approach** of [NoSpider - Arachnophobia Mode](https://www.curseforge.com/wow/addons/nospider-arachnophobia-mode)
+by **GrasHopper42**, whose author lists the project under the
+[MIT License](https://www.curseforge.com/wow/addons/nospider-arachnophobia-mode/license).
+Its native parent-and-anchor overlay approach informed this Forever
+implementation. NoSpider code, artwork, bundled libraries, zone tables, and
+spawn coordinates have not been copied into this addon.
+
+**A zone/sub-zone database is not required for nameplate overlays.** The
+nameplate supplies native positioning. Static zone or spawn data can support
+optional historical-area warnings; it cannot locate a restricted creature or
+bypass missing identity/position access. Zone membership never gates our covers.
+
+The bundled creature database is a **Classic Azeroth baseline** with 124
+owner-curated IDs. It includes original Classic dungeons and raids. The
+TBC-introduced Tcha'kaz entry was removed even though its location is a Classic
+zone. No expansion zone/sub-zone tables or spawn datasets are bundled.
+Forever uses Vanilla Classic as its content baseline. Accessible family/name
+matching also supports creatures absent from the curated ID list; the list
+is not a claim of a completely verified Forever bestiary.
+
+**LibTourist Classic Era (MIT)** is the selected external source if general
+area metadata becomes necessary. Questie/QuestieDB data is excluded.
+LibTourist has no spider NPC/spawn database; NoSpider's curated spider-area
+records are being assessed as a complementary source after Classic filtering
+and source review. None of its data has been imported.
+Its Wowhead-derived bulk spawn table is excluded because the published
+Wowhead terms do not provide the required redistribution permission.
+No geography library is bundled for the current nameplate covers. The source
+review and Classic filtering rules are in [docs/DATA-SOURCES.md](docs/DATA-SOURCES.md).
 
 ## Slash command
 
@@ -59,7 +110,7 @@ off-screen.
 ### How a spider is recognised
 
 1. **Creature ID** against a curated database (`SpidersBeGone/SpiderDB.lua`,
-   125 spider and spider-looking creature IDs compiled by the owner, with their
+   124 spider and spider-looking creature IDs compiled by the owner, with their
    home zones) — exact, and the only thing that catches names that give nothing
    away ("Moss Stalker", "Crypt Horror", "Krethis Shadowspinner") or the
    bug-model creatures the client files outside the Spider family.
@@ -74,8 +125,9 @@ it permanently (per character, saved in SavedVariables); `/spider names` and
 `SBeGoneSettings.namePatterns` — those are *added to* the built-in set, never a
 replacement.
 
-Players, pets and totems are never covered; the level window
-(`minLevel`/`maxLevel`) and `requireHostile` still apply.
+Player units are excluded. The level window (`minLevel`/`maxLevel`) and
+`requireHostile` still apply. Identification requires accessible unit data;
+the addon does not infer hidden identities from another source.
 
 ## Developer notes
 

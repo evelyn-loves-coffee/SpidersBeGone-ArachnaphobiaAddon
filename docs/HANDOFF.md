@@ -1,5 +1,26 @@
 # HANDOFF — resume here (fresh session)
 
+**Current local build: v0.2.5.** Use [NATIVE-OVERLAYS.md](NATIVE-OVERLAYS.md)
+for behavior and pending live tests, and [DATA-SOURCES.md](DATA-SOURCES.md)
+for the Classic-only scope and NoSpider attribution. Older notes below
+describe prior releases and may make stronger API claims than live evidence supports.
+
+**Current data-source decision:** use LibTourist Classic Era (MIT) for general
+external area metadata if needed; exclude Questie/QuestieDB data. NoSpider's
+curated spider-area records are being assessed as a complementary source;
+retain its design credit. Exclude its identifiable Wowhead-derived bulk spawn
+table: the published terms do not grant redistribution permission. The owner
+confirmed Vanilla Classic as Forever's content baseline; retain client/API
+and map-ID checks separately. No import is needed for native nameplate tracking.
+See DATA-SOURCES.md for sources and the licensing decision.
+
+**Local v0.2.4 update:** the user reports that the v0.2.3 cover stays in one
+screen position. Covers now parent to the moving nameplate, use local size and
+offsets, verify available unit metadata, and detach on reuse. Offline checks
+pass; this update has **not** been installed or verified in game. Start with
+[TRACKING-FIX.md](TRACKING-FIX.md). The v0.2.3 notes below are historical;
+their claims that a successful anchor probe proves movement are superseded.
+
 Last updated: **2026-10-16**, after implementing **M3.5 auto-track** and the
 owner's curated **spider database**, both shipped in **v0.2.3** (offline suite
 **144 checks, ALL PASS**; installed and sync-verified). **A new agent session

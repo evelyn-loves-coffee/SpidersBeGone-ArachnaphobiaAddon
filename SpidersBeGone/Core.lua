@@ -21,7 +21,8 @@ Client facts (docs/PLAN.md §2, verified in-client 2026-10-13):
 ]]
 
 SBeGone = SBeGone or {}
-SBeGone.version = "0.2.3"
+SBeGone.version = "0.2.5"
+local A = SBeGone.Access
 
 SBeGone.hidden = nil  -- panic-hide seam (M4); true hides every cover
 SBeGone.ready = false -- true once a character's covers are restored
@@ -70,7 +71,7 @@ local DEFAULTS = {
 	-- let the CLIENT move it (SBG15: we cannot measure a plate, but anchoring TO
 	-- one is allowed — proven in game 2026-10-15, "anchor=true").
 	autoTrack = true,
-	trackScale = 1.6,   -- cover size = plate apparent width x this
+	trackScale = 1.6,   -- cover local size = plate local width x this
 	drop = 0.9,         -- centre the cover this many cover-heights below the plate
 	trackRelease = 0.5, -- seconds a cover survives losing its plate (anti-flicker)
 	arrange = false,    -- true = covers take the mouse so they can be dragged
@@ -167,7 +168,11 @@ function SBeGone.Slash(msg)
 		local a = string.match(msg or "", "^%s*auto%s+(%S+)") or ""
 		if a == "on" or a == "off" then
 			SBeGoneSettings.autoTrack = (a == "on")
-			if a == "on" then SBeGone.trackFailures = 0 end
+			if a == "on" then
+				SBeGone.trackFailures = 0
+				SBeGone.tickErrors = 0
+				SBeGone.autoSuspended = false
+			end
 			if not SBeGoneSettings.autoTrack and SBeGone.ready then
 				SBeGone.ClearTrack()
 			end
@@ -341,10 +346,10 @@ function SBeGone.Selftest()
 			if SBeGone.Cover.IsAllocated(slot) then tracked = tracked + 1 end
 		end
 	end
-	print(("SBG| auto=%s tracked=%d arrange=%s grow=%s drop=%s | covers shown=%d/%d | saved=%d | size=%s"):format(
+	print(("SBG| auto=%s tracked=%d arrange=%s grow=%s drop=%s | covers shown=%d/%d | saved=%d | size=%s | limited=%s paused=%s"):format(
 		tostring(s.autoTrack), tracked, tostring(s.arrange), tostring(s.trackScale),
 		tostring(s.drop), SBeGone.Cover.ShownCount(), SBeGone.Cover.MAX, saved,
-		tostring(s.coverSize)))
+		tostring(s.coverSize), tostring(SBeGone.coverageLimited == true), tostring(SBeGone.autoSuspended == true)))
 end
 
 -- ----------------------------------------------------------------- driver
@@ -361,20 +366,25 @@ function SBeGone.Tick()
 		C_Timer.After(tickInterval, SBeGone.Tick)
 	end
 	if SBeGone.ready and SBeGoneSettings.enabled and not SBeGone.hidden then
-		local ok, err = pcall(SBeGone.Update)
-		if not ok then
-			SBeGone.tickErrors = (SBeGone.tickErrors or 0) + 1
-			if SBeGone.tickErrors <= 3 then
-				print("SBG| tick error: " .. tostring(err))
-			elseif SBeGone.tickErrors == 4 then
-				-- Fail safe instead of spamming chat 10x a second: drop to the
-				-- cursor mode the owner knows works.
-				SBeGoneSettings.autoTrack = false
-				print("SBG| repeated tick errors - auto-track OFF (retry with /spider auto on)")
-			end
-		else
-			SBeGone.tickErrors = 0
+		SBeGone.Refresh()
+	end
+end
+
+function SBeGone.Refresh()
+	local ok, err = pcall(SBeGone.Update)
+	if not ok then
+		SBeGone.coverageLimited = true
+		SBeGone.tickErrors = (SBeGone.tickErrors or 0) + 1
+		if SBeGone.tickErrors <= 3 then
+			print("SBG| tick error: " .. tostring(err))
+		elseif SBeGone.tickErrors == 4 then
+			-- Stop rather than trying another automatic detection channel.
+			SBeGone.autoSuspended = true
+			SBeGone.ClearTrack()
+			print("SBG| automatic covers paused after errors; coverage limited (/spider auto on to retry)")
 		end
+	else
+		SBeGone.tickErrors = 0
 	end
 end
 
@@ -391,6 +401,9 @@ end
 -- Tick logic: pick up drags, then run the sticky hover state machine.
 function SBeGone.Update()
 	local s = SBeGoneSettings
+	SBeGone.coverageLimited = SBeGone.autoSuspended == true
+	SBeGone.Cover.RetryReleases()
+	if SBeGone.autoSuspended then return end
 	-- /spider arrange: the owner is positioning covers by hand, so nothing
 	-- tracks and nothing is allocated until arrange is off.
 	if s.arrange then
@@ -399,7 +412,7 @@ function SBeGone.Update()
 	end
 	-- Auto-track (the owner's goal: covers appear as you walk up on spiders,
 	-- no targeting, no mouseover) is the primary mode; the cursor/sticky path
-	-- stays available as the fallback for clients without usable nameplates.
+	-- remains available only when explicitly selected with /spider auto off.
 	if s.autoTrack then
 		SBeGone.TrackTick()
 	else
@@ -414,17 +427,15 @@ function SBeGone.HoverTick()
 	local s = SBeGoneSettings
 	SBeGone.Cover.SyncDrags()
 
-	local name
-	if UnitName then
-		name = UnitName("mouseover")
-	end
+	local name = A.Query(UnitName, "mouseover")
 	local hovering = name ~= nil and SBeGone.Units.IsSpider("mouseover")
 	local h = SBeGone.hover
 	local sticky = s.stickyCovers ~= false
 
 	if hovering then
-		local cx, cy = GetCursorPosition()
-		local id = UnitCreatureID and UnitCreatureID("mouseover")
+		local cx, cy = A.Query(GetCursorPosition)
+		if type(cx) ~= "number" or type(cy) ~= "number" then return end
+		local id = A.Query(UnitCreatureID, "mouseover")
 		local key = name .. "|" .. tostring(id)
 		if h.slot == nil or h.key ~= key then
 			-- Newly on a (different) spider: settle the previous cover —
@@ -482,9 +493,10 @@ end
 --   C_NamePlate exists as a table, GetNamePlates -> nil
 -- but anchoring is allowed:
 --   probe:SetPoint("CENTER", NamePlate1, "CENTER", 0, -60) -> "anchor=true"
--- so the client recomputes our frame's position on every layout pass. We get
--- the movement for free, and the plate's own effective scale (0.512 at camera
--- zoom 20 in that same session) tracks distance, so size follows too.
+-- That probe only proved that SetPoint is accepted, not that a screen-rooted
+-- cover follows the native plate. The reported v0.2.3 cover stayed on screen.
+-- v0.2.4 also parents OUR cover to the plate, using plate-local size/offsets
+-- so the native transform carries both movement and distance scaling.
 --
 -- Accepted consequence: a frame anchored to a restricted frame cannot be
 -- measured by us either (our own GetPoint threw the same error in that
@@ -494,39 +506,72 @@ end
 local MAX_PLATES_SCAN = 40 -- nameplate1..N tokens; plates are not dense
 local MIN_TRACK, MAX_TRACK = 16, 512
 
-function SBeGone.PlateFrameFor(token, idx)
-	-- Try the namespace mapper first (C_NamePlate is present on this client but
-	-- its members are unverified), then fall back to the indexed globals, which
-	-- are proven present in game: _G["NamePlate1"] resolved while its
-	-- measurement methods were restricted.
-	if C_NamePlate and C_NamePlate.GetNamePlateForUnit then
-		local ok, f = pcall(C_NamePlate.GetNamePlateForUnit, token)
-		if ok and f then return f end
+-- A frame's allocation number is not its current unit identity. The public
+-- mapper is authoritative when present; the reduced client can instead expose
+-- GetUnit/unitToken/unit (or UnitFrame.unit) on its indexed globals. Read only.
+local function plateToken(plate)
+	if not A.FrameUsable(plate) then return nil, false end
+	local method, _, readable = A.Query(function() return plate.GetUnit end)
+	if not readable then return nil, false end
+	if type(method) == "function" then
+		local token, _, ok = A.Query(method, plate)
+		return type(token) == "string" and token or nil, ok
 	end
-	return _G["NamePlate" .. idx] or _G["nameplate" .. idx]
+	for _, field in ipairs({ "unitToken", "unit" }) do
+		local token, _, ok = A.Query(function() return plate[field] end)
+		if not ok then return nil, false end
+		if type(token) == "string" then return token, true end
+	end
+	local token, _, ok = A.Query(function()
+		if plate.UnitFrame then return plate.UnitFrame.unit end
+	end)
+	return type(token) == "string" and token or nil, ok
 end
 
--- Apparent plate width in OUR frames' units: the plate's own width scaled by
--- the ratio of effective scales. Plain read-only numbers, no measurement of a
--- restricted region (GetWidth / GetEffectiveScale both returned values in game).
-local function plateWidthUI(plate, ourScale)
-	if type(plate) ~= "table" or type(plate.GetWidth) ~= "function" then return nil end
-	local okW, w = pcall(plate.GetWidth, plate)
-	if not okW or type(w) ~= "number" or w <= 0 then return nil end
-	local ps
-	if type(plate.GetEffectiveScale) == "function" then
-		local okS, v = pcall(plate.GetEffectiveScale, plate)
-		if okS and type(v) == "number" and v > 0 then ps = v end
+local function plateShown(plate)
+	if not A.FrameUsable(plate) then return false end
+	local shown, _, ok = A.Query(function() return plate:IsShown() end)
+	return ok and shown == true
+end
+
+function SBeGone.PlateFrameFor(token, idx)
+	if C_NamePlate and C_NamePlate.GetNamePlateForUnit then
+		local f, _, ok = A.Query(C_NamePlate.GetNamePlateForUnit, token)
+		-- A successful nil means there is NO plate, not permission to adopt a
+		-- stale indexed global. Never bind a frame known to display another unit.
+		if not ok or not plateShown(f) then return nil end
+		local owner, readable = plateToken(f)
+		if readable and (owner == nil or owner == token) then return f end
+		return nil
 	end
-	local k = (ps or 1) / ((type(ourScale) == "number" and ourScale > 0) and ourScale or 1)
-	return w * k
+	-- Prefer an explicitly matching frame, even when its numeric suffix differs.
+	for i = 1, MAX_PLATES_SCAN do
+		local f = _G["NamePlate" .. i] or _G["nameplate" .. i]
+		if plateShown(f) and plateToken(f) == token then return f end
+	end
+	-- No numeric-suffix guessing: missing identity is limited coverage.
+	return nil
+end
+
+-- Tracked covers inherit the plate's effective scale via SetParent. Multiplying
+-- that scale into their size as well would apply perspective twice. Only the
+-- screen-size limits/fallback need converting from UI units to plate units.
+local function plateSize(plate, ourScale, grow, fallback)
+	local ps = ourScale
+	local v = A.Query(function() return plate:GetEffectiveScale() end)
+	if type(v) == "number" and v > 0 then ps = v end
+	local toLocal = ourScale / ps
+	local size = fallback * toLocal
+	local w = A.Query(function() return plate:GetWidth() end)
+	if type(w) == "number" and w > 0 then size = w * grow end
+	return math.max(MIN_TRACK * toLocal, math.min(MAX_TRACK * toLocal, size))
 end
 
 function SBeGone.OurScale()
 	local ou = 1
 	if UIParent and type(UIParent.GetEffectiveScale) == "function" then
-		local ok, v = pcall(UIParent.GetEffectiveScale, UIParent)
-		if ok and type(v) == "number" and v > 0 then ou = v end
+		local v = A.Query(UIParent.GetEffectiveScale, UIParent)
+		if type(v) == "number" and v > 0 then ou = v end
 	end
 	return ou
 end
@@ -580,6 +625,7 @@ function SBeGone.ResetTrack()
 end
 
 function SBeGone.TrackTick()
+	if SBeGone.autoSuspended then return end
 	local C, U = SBeGone.Cover, SBeGone.Units
 	local s = SBeGoneSettings
 	local t = SBeGone.track
@@ -594,54 +640,44 @@ function SBeGone.TrackTick()
 		local token = "nameplate" .. i
 		-- Read-only unit queries only (SBG-verified: UnitExists / UnitIsVisible
 		-- / UnitCreatureFamily all answer for nameplate tokens).
-		if (not UnitExists or UnitExists(token))
-			and (not UnitIsVisible or UnitIsVisible(token)) then
+		if (not UnitExists or A.Query(UnitExists, token) == true)
+			and (not UnitIsVisible or A.Query(UnitIsVisible, token) == true) then
 			local isSpider = U.IsSpider(token)
-			live[token] = isSpider
 			if isSpider then
+				local plate = SBeGone.PlateFrameFor(token, i)
 				local slot = t[token]
-				-- Adopt an existing entry only if it is still OURS: allocated,
-				-- still a track cover, and bound to this token. Anything else is
-				-- a recycled index and gets a fresh cover instead.
-				if slot == nil or C.KindOf(slot) ~= "track"
-					or SBeGone.trackSlots[slot] ~= token then
-					-- Evict another tracked cover first if the pool is full: a
-					-- screen full of spiders must never eat the owner's parked
-					-- shields (that is what /spider parks N is for).
-					slot = C.Allocate("track", nil, nil, "track")
-					if slot ~= nil then
-						bindTrack(token, slot)
-					else
-						dropTrack(token)
-					end
-				end
-				if slot ~= nil then
-					local plate = SBeGone.PlateFrameFor(token, i)
-					if plate ~= nil then
-						local pw = plateWidthUI(plate, ourScale)
-						local size = C.Size()
-						if pw then
-							size = pw * grow
-							if size < MIN_TRACK then size = MIN_TRACK end
-							if size > MAX_TRACK then size = MAX_TRACK end
+				if plate then
+					live[token] = true
+					-- Adopt an entry only if its kind and reverse map still agree:
+					-- pool indices are recycled and may belong to a sticky cover.
+					if slot == nil or C.KindOf(slot) ~= "track"
+						or SBeGone.trackSlots[slot] ~= token then
+						-- Prefer sacrificing another track cover over parked shields.
+						slot = C.Allocate("track", nil, nil, "track")
+						if slot ~= nil then
+							bindTrack(token, slot)
+						else
+							dropTrack(token)
 						end
+					end
+					if slot ~= nil then
+						local size = plateSize(plate, ourScale, grow, C.Size())
 						C.Resize(slot, size, size)
 						-- Models hang BELOW their nameplate, hence the drop.
 						if not C.PlaceTracked(slot, plate, size * dropK) then
-							-- The client refused the anchor. Proven legal in game
-							-- (2026-10-15), so a refusal means a stale frame handle:
-							-- release the slot rather than leave a position-less
-							-- frame around, and give up after a run of refusals
-							-- instead of churning the pool 10 times a second.
+							-- Parenting or anchoring may be refused by the client.
+							-- Release the slot; do not leave an orphaned screen cover.
 							C.Release(slot)
 							dropTrack(token)
 							SBeGone.trackFailures = (SBeGone.trackFailures or 0) + 1
 							if SBeGone.trackFailures == 20 then
-								SBeGoneSettings.autoTrack = false
-								print("SBG| the client would not anchor covers - auto-track OFF (/spider auto on to retry)")
+								SBeGone.autoSuspended = true
+								print("SBG| the client would not anchor covers - automatic covers paused; coverage limited (/spider auto on to retry)")
 							end
 						end
 					end
+				else
+					SBeGone.coverageLimited = true
 				end
 			end
 		end
@@ -656,6 +692,13 @@ function SBeGone.TrackTick()
 			dropTrack(token)
 		elseif live[token] then
 			state.miss = 0
+		elseif (A.Query(UnitExists, token) == true)
+			or (state.anchoredPlate and plateToken(state.anchoredPlate)
+				and plateToken(state.anchoredPlate) ~= token) then
+			-- A known replacement unit/missing mapping is not a brief loss:
+			-- the old cover must not follow a different creature during grace.
+			C.Release(slot)
+			dropTrack(token)
 		else
 			state.miss = (state.miss or 0) + 1
 			if state.miss > grace then
@@ -690,6 +733,7 @@ function SBeGone.OnEnterWorld()
 	SBeGone.track = {}
 	SBeGone.trackSlots = {}
 	SBeGone.trackFailures = 0
+	SBeGone.autoSuspended = false
 	SBeGone.tickErrors = 0
 	-- Arrange mode is a transient editing state: if it survived in
 	-- SavedVariables, every cover would eat clicks at login (playability rule),
@@ -719,7 +763,11 @@ local function EnsureEventFrame()
 	-- SBG6-confirmed events only (RegisterEvent errors on unknown names)
 	f:RegisterEvent("PLAYER_ENTERING_WORLD")
 	f:RegisterEvent("VARIABLES_LOADED")
-	f:SetScript("OnEvent", function(_, evt)
+	-- Optional on the earlier probed build; supported by current Forever docs.
+	-- Unknown event registration is rejected normally and polling remains.
+	pcall(f.RegisterEvent, f, "NAME_PLATE_UNIT_ADDED")
+	pcall(f.RegisterEvent, f, "NAME_PLATE_UNIT_REMOVED")
+	f:SetScript("OnEvent", function(_, evt, unitArg)
 		-- SBG10: this client's native SetScript calls handlers with NO
 		-- arguments — event data arrives via the `this`/`event`/`arg1`..
 		-- globals (proven by Spoken's Compat.lua override). `evt` covers
@@ -731,6 +779,15 @@ local function EnsureEventFrame()
 			SBeGone.RetryEnterWorld()
 		elseif ev == "PLAYER_ENTERING_WORLD" then
 			SBeGone.RetryEnterWorld()
+		elseif ev == "NAME_PLATE_UNIT_REMOVED" then
+			local unit = unitArg or arg1
+			if A.CanRead(unit) and type(unit) == "string" then
+				local slot = SBeGone.track[unit]
+				if slot then SBeGone.Cover.Release(slot); dropTrack(unit) end
+			end
+		elseif ev == "NAME_PLATE_UNIT_ADDED" and SBeGone.ready
+			and SBeGoneSettings.enabled and SBeGoneSettings.autoTrack and not SBeGone.hidden then
+			SBeGone.Refresh()
 		end
 	end)
 	SBeGone.eventFrame = f

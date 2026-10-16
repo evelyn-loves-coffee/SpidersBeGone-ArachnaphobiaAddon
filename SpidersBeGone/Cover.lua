@@ -66,13 +66,14 @@ function C.ApplyInteractivity()
 	local on = C.IsInteractive()
 	for i = 1, C.MAX do
 		local slot = C.pool[i]
-		slot.frame:EnableMouse(on)
+		local interactive = on and not slot.pendingRelease
 		-- An anchored frame cannot be dragged (and measuring it throws a taint
 		-- error: it transitively touches the restricted plate), so arranging
 		-- means letting go of every plate.
-		if on and slot.anchored then
-			C.Unanchor(i)
+		if interactive and slot.anchored then
+			interactive = C.Unanchor(i)
 		end
+		pcall(slot.frame.EnableMouse, slot.frame, interactive and true or false)
 	end
 end
 
@@ -201,34 +202,44 @@ end
 -- frame — see C.SyncDrags and C.Save, which both skip anchored slots.
 function C.Unanchor(i)
 	local slot = C.pool[i]
-	if not slot then return end
+	if not slot then return false end
+	-- Pool slots are also used for parked/sticky covers. Detach OUR frame
+	-- from the plate before it can be reused or measured as a screen cover.
+	local parentOK = pcall(slot.frame.SetParent, slot.frame, UIParent)
+	if not parentOK then SBeGone.coverageLimited = true; return false end
 	if slot.frame.ClearAllPoints then
-		pcall(slot.frame.ClearAllPoints, slot.frame)
+		local clearOK = pcall(slot.frame.ClearAllPoints, slot.frame)
+		if not clearOK then return false end
 	end
-	slot.anchored = false
-	slot.anchoredPlate = nil
-	slot.anchoredDrop = 0
 	-- Anchor state and explicit state are mutually exclusive: put the frame
 	-- back under our own control at its last known free position.
 	if type(slot.x) == "number" and type(slot.y) == "number" then
-		slot.frame:SetPoint("CENTER", UIParent, "BOTTOMLEFT", slot.x, slot.y)
+		local ok = pcall(slot.frame.SetPoint, slot.frame, "CENTER", UIParent, "BOTTOMLEFT", slot.x, slot.y)
+		if not ok then return false end
 	elseif slot.frame.SetPoint then
 		-- An anchored cover has NO coordinates of its own (we never measure it),
 		-- so put it somewhere findable instead of leaving it point-less: a frame
 		-- with no anchor renders nowhere, which would make a released cover
 		-- vanish mid-arrange. Centring needs no measurement.
-		pcall(slot.frame.SetPoint, slot.frame, "CENTER", UIParent, "CENTER")
+		local ok = pcall(slot.frame.SetPoint, slot.frame, "CENTER", UIParent, "CENTER")
+		if not ok then return false end
 	end
+	slot.anchored = false
+	slot.anchoredPlate = nil
+	slot.anchoredDrop = 0
+	return true
 end
 
--- Anchor a cover to a nameplate frame, centred `dropY` UI units BELOW the
--- plate (models hang below their nameplate). Offsets are ours, so nothing is
--- measured: the client re-computes our position every layout pass, which is
--- exactly the dynamic movement we cannot derive ourselves. Proven present
--- in-game 2026-10-15: SetPoint to a nameplate does NOT error (anchor=true).
+-- Parent OUR cover to the plate as well as anchoring it. A UIParent child
+-- with a cross-parent anchor remained parked on screen on the target client;
+-- a plate child participates in the native world-frame movement/scale tree.
+-- Size and dropY are plate-local units: perspective is inherited once, by
+-- both the disc and its offset, between Lua polling ticks. Never measure it.
 function C.PlaceTracked(i, plate, dropY)
 	local slot = C.pool[i]
-	if not slot or not plate or not slot.frame.SetPoint then return false end
+	if not slot or not SBeGone.Access.FrameUsable(plate) or not slot.frame.SetPoint then return false end
+	local mouseOK = pcall(slot.frame.EnableMouse, slot.frame, false)
+	if not mouseOK then return false end
 	dropY = dropY or 0
 	-- Re-anchor only when the target changed or the offset moved >= 1 UI unit
 	-- (same epsilon policy as C.Place) — 10 Hz x 24 slots stays trivial.
@@ -238,8 +249,15 @@ function C.PlaceTracked(i, plate, dropY)
 		return true
 	end
 	if slot.frame.ClearAllPoints then
-		pcall(slot.frame.ClearAllPoints, slot.frame)
+		local clearOK = pcall(slot.frame.ClearAllPoints, slot.frame)
+		if not clearOK then return false end
 	end
+	local parentOK = pcall(slot.frame.SetParent, slot.frame, plate)
+	if not parentOK then return false end
+	-- Track attachment immediately, including when the following anchor is
+	-- rejected. Cleanup must never mistake a plate child for a screen frame.
+	slot.anchored = true
+	slot.anchoredPlate = plate
 	local ok = pcall(slot.frame.SetPoint, slot.frame, "CENTER", plate, "CENTER", 0, -dropY)
 	if not ok then
 		return false
@@ -277,31 +295,35 @@ end
 -- else oldest = FIFO).
 function C.Allocate(kind, x, y, prefer)
 	local i
-	if #C.free > 0 then
-		i = table.remove(C.free)
-	else
-		i = pickEvict(prefer)
-		if not i then return nil end
-		-- Tell whoever owned the sacrificed slot so they can drop their
-		-- bookkeeping (see C.KindOf: indices are recycled).
-		if C.onEvict then
-			local ok, err = pcall(C.onEvict, i)
-			if not ok and SBeGone.debug then
-				print("SBG| onEvict hook error: " .. tostring(err))
+	for attempt = 1, C.MAX do
+		if #C.free > 0 then
+			i = table.remove(C.free)
+			break
+		else
+			local victim = pickEvict(prefer)
+			if not victim then return nil end
+			-- Tell the previous owner before recycling its slot.
+			if C.onEvict then
+				local ok, err = pcall(C.onEvict, victim)
+				if not ok and SBeGone.debug then
+					print("SBG| onEvict hook error: " .. tostring(err))
+				end
 			end
+			-- A refused detach quarantines that slot. Try another slot instead
+			-- of reusing a frame still attached to a restricted nameplate.
+			C.Release(victim)
 		end
-		-- Take ONLY the sacrificed slot out of the queue; it is re-appended
-		-- below. (The old FIFO line `table.remove(C.queue, 1)` stayed here after
-		-- pickEvict replaced FIFO and silently dropped an UNRELATED slot from the
-		-- queue - and C.Save/C.Restore iterate the queue, so that slot's owner
-		-- would have lost its cover at the next relog. Caught by the suite test
-		-- "eviction keeps the allocation queue exactly consistent".)
-		for q = #C.queue, 1, -1 do
-			if C.queue[q] == i then table.remove(C.queue, q) break end
-		end
-		C.pool[i].frame:Hide()
+	end
+	if not i then
+		if #C.free == 0 then return nil end
+		i = table.remove(C.free)
 	end
 	local slot = C.pool[i]
+	if not C.Unanchor(i) then
+		slot.pendingRelease = true
+		slot.anchored = true
+		return nil
+	end
 	C.queue[#C.queue + 1] = i
 	slot.kind = kind
 	slot.allocated = true
@@ -309,7 +331,6 @@ function C.Allocate(kind, x, y, prefer)
 	C.seq = slot.seq
 	slot.miss = 0
 	slot.x, slot.y = nil, nil
-	C.Unanchor(i)
 	C.Resize(i, C.Size(), C.Size())
 	C.Place(i, x, y)
 	return i
@@ -337,9 +358,12 @@ end
 -- Return a slot to the pool (cover disappears).
 function C.Release(i)
 	local slot = C.pool[i]
-	if not slot then return end
-	C.Unanchor(i)
-	slot.frame:Hide()
+	if not slot then return false end
+	if not slot.allocated and not slot.pendingRelease then return true end
+	pcall(slot.frame.Hide, slot.frame)
+	local detached = C.Unanchor(i)
+	slot.pendingRelease = not detached
+	if not detached then slot.anchored = true end
 	slot.allocated = false
 	slot.x, slot.y = nil, nil
 	for q = #C.queue, 1, -1 do
@@ -348,7 +372,20 @@ function C.Release(i)
 			break
 		end
 	end
-	C.free[#C.free + 1] = i
+	if detached then C.free[#C.free + 1] = i end
+	return detached
+end
+
+-- Retry deferred cleanup through normal APIs only. A slot that cannot be
+-- detached is excluded from allocation, persistence and drag measurement.
+function C.RetryReleases()
+	if not C.inited then return end
+	local pending = false
+	for i = 1, C.MAX do
+		if C.pool[i].pendingRelease then C.Release(i) end
+		if C.pool[i].pendingRelease then pending = true end
+	end
+	if not pending and C.deferredRestore then C.Restore(C.deferredRestore) end
 end
 
 function C.HideAll()
@@ -359,15 +396,18 @@ function C.HideAll()
 end
 
 function C.ClearAll()
+	C.deferredRestore = nil
 	C.queue = {}
 	C.free = {}
 	for i = 1, C.MAX do
 		local slot = C.pool[i]
-		C.Unanchor(i)
-		slot.frame:Hide()
+		pcall(slot.frame.Hide, slot.frame)
+		local detached = C.Unanchor(i)
+		slot.pendingRelease = not detached
+		if not detached then slot.anchored = true end
 		slot.allocated = false
 		slot.x, slot.y = nil, nil
-		C.free[#C.free + 1] = i
+		if detached then C.free[#C.free + 1] = i end
 	end
 end
 
@@ -375,7 +415,7 @@ function C.ShownCount()
 	if not C.inited then return 0 end
 	local n = 0
 	for i = 1, C.MAX do
-		if C.pool[i].frame:IsShown() then n = n + 1 end
+		if SBeGone.Access.Query(C.pool[i].frame.IsShown, C.pool[i].frame) == true then n = n + 1 end
 	end
 	return n
 end
@@ -435,6 +475,9 @@ end
 -- WSV file had covers[<char>] = {}). A slot in C.queue with coordinates is
 -- exactly the allocation state we want to persist.
 function C.Save()
+	-- A temporarily exhausted pool must not overwrite a saved layout with
+	-- only the subset that could be restored while detachment was blocked.
+	if C.deferredRestore then return end
 	local char = SBeGone.char
 	local s = SBeGoneSettings
 	if not char or not s then return end
@@ -485,10 +528,12 @@ end
 
 -- Spawn n default pre-parked shields (a row near the top-left).
 function C.Park(n)
+	local placed = 0
 	for k = 1, (n or 0) do
 		local x, y = DefaultParkPos(k, C.Size())
-		C.Allocate("park", x, y)
+		if C.Allocate("park", x, y) then placed = placed + 1 end
 	end
+	return placed
 end
 
 -- Release every allocated cover of a kind (used by /spider parks).
@@ -510,17 +555,18 @@ function C.Restore(char)
 	C.ClearAll()
 	local s = SBeGoneSettings or {}
 	local saved, firstRun = C.SavedList(s, char)
+	local complete = true
 	for _, e in ipairs(saved) do
 		if type(e) == "table" and type(e.x) == "number" and type(e.y) == "number" then
 			local i = C.Allocate(e.kind or "hover", e.x, e.y)
 			local w = (type(e.w) == "number") and e.w or C.Size()
 			local h = (type(e.h) == "number") and e.h or w
-			C.Resize(i, w, h)
+			if i then C.Resize(i, w, h) else complete = false end
 		end
 	end
 	local parks = (type(s.parkCount) == "number") and s.parkCount or 8
 	if firstRun then
-		C.Park(parks)
+		if C.Park(parks) < parks then complete = false end
 	end
 	if SBeGone.debug then
 		-- SBG13 diagnostic: one line per restore, so chat alone settles
@@ -529,5 +575,11 @@ function C.Restore(char)
 			tostring(SBeGone.loadSnapshot and SBeGone.loadSnapshot.settingsPresent),
 			tostring(firstRun), #saved, firstRun and parks or 0))
 	end
+	if not complete then
+		C.deferredRestore = char
+		SBeGone.coverageLimited = true
+		return false
+	end
 	C.Save()
+	return true
 end

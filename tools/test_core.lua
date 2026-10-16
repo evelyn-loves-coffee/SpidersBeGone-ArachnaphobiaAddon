@@ -58,8 +58,8 @@ GetCursorPosition = function() return cursor.x, cursor.y, 1 end
 
 C_Timer = { After = function() end } -- no-op; tests drive SBeGone.Tick()
 
-UIParent = {}
-function UIParent:GetEffectiveScale() return 1 end
+UIParent = { scale = 1 }
+function UIParent:GetEffectiveScale() return self.scale end
 SlashCmdList = {}
 
 -- Nameplate stand-in: unit token -> indexed global frame (proven layout in
@@ -73,6 +73,7 @@ local function makePlate(w, effScale)
 	f:SetWidth(w)
 	f:SetHeight(w * 0.15)
 	f.effScale = effScale
+	f.visible = true
 	local blocked = function()
 		error("Action[FrameMeasurement] failed because[Can't measure restricted regions]", 0)
 	end
@@ -80,6 +81,7 @@ local function makePlate(w, effScale)
 	return f
 end
 local function setPlate(idx, plate)
+	if plate and plate.unitToken == nil then plate.unitToken = "nameplate" .. idx end
 	_G["NamePlate" .. idx] = plate
 	return plate
 end
@@ -95,7 +97,8 @@ local function makeFrame()
 	function f:Show() self.pending = true end
 	function f:Hide() self.visible = false; self.pending = false end
 	function f:IsShown() return self.visible end
-	function f:SetParent(_) end
+	function f:SetParent(parent) self.parent = parent end
+	function f:GetParent() return self.parent end
 	function f:SetFrameStrata(_) end
 	-- Client-faithful (SBG9): SetClampRect and SetSize are ABSENT on this
 	-- client — do not stub them, so any direct call fails the suite the
@@ -108,7 +111,10 @@ local function makeFrame()
 	function f:GetHeight() return self.size[2] end
 	-- Nameplates carry their own effective scale (in-game N5: 0.512); plain
 	-- frames default to 1 (UIParent scale).
-	function f:GetEffectiveScale() return self.effScale or 1 end
+	function f:GetEffectiveScale()
+		return self.effScale or (self.parent and self.parent:GetEffectiveScale()) or 1
+	end
+	function f:ClearAllPoints() self.points = {} end
 	function f:SetPoint(anchor, relFrame, relPoint, x, y)
 		self.points[1] = {
 			anchor = anchor, relFrame = relFrame, relPoint = relPoint,
@@ -118,6 +124,9 @@ local function makeFrame()
 	function f:GetPoint(_, relFrame, relPoint)
 		local p = self.points[1]
 		if not p then return nil end
+		if (self.parent and self.parent.restricted) or p.relFrame.restricted then
+			error("Can't measure restricted regions", 0)
+		end
 		if relFrame ~= nil and p.relFrame ~= relFrame then return nil end
 		if relPoint ~= nil and p.relPoint ~= relPoint then return nil end
 		-- Client-faithful (SBG12): (point, relativeToFrame, relativeToPoint,
@@ -174,6 +183,7 @@ SBeGoneSettings = { enabled = "yes", color = "red", covers = 42, parkCount = 3 }
 
 --------------------------------------------------------------------- load
 dofile("SpidersBeGone/SpiderDB.lua")
+dofile("SpidersBeGone/Access.lua")
 dofile("SpidersBeGone/Units.lua")
 dofile("SpidersBeGone/Cover.lua")
 dofile("SpidersBeGone/Core.lua")
@@ -601,6 +611,8 @@ SBeGone.Cover.ClearAll()
 
 local plateA = setPlate(1, makePlate(100, 0.5)) -- apparent width 50 UI units
 local plateB = setPlate(2, makePlate(100, 0.5))
+plateA.unitToken, plateB.unitToken = "nameplate1", "nameplate2"
+plateA.restricted, plateB.restricted = true, true
 setUnit("nameplate1",
 	{ name = "Young Night Web Spider", level = 24, famName = "Spider", famId = 3, id = 1504 })
 setUnit("nameplate2", { name = "Young Scavenger", level = 24, famId = 1, id = 1499 })
@@ -615,21 +627,141 @@ check(SBeGone.Cover.pool[trA].anchored == true, "track: cover is anchored to the
 local ptA = SBeGone.Cover.pool[trA].frame.points[1]
 check(ptA and ptA.relFrame == plateA and ptA.anchor == "CENTER" and ptA.relPoint == "CENTER",
 	"track: anchored to the plate frame itself (client moves it, not us)")
--- apparent plate width = 100 x 0.5 = 50; cover = 50 x trackScale(1.6) = 80
-check(SBeGone.Cover.pool[trA].w == 80 and SBeGone.Cover.pool[trA].h == 80,
-	"track: size follows the plate's apparent size (resize, not a fixed disc)")
+local trackedFrame = SBeGone.Cover.pool[trA].frame
+check(trackedFrame:GetParent() == plateA,
+	"track: cover belongs to the moving nameplate instead of the screen root")
+-- 160 plate-local units render as 80 UI units at scale 0.5.
+check(SBeGone.Cover.pool[trA].w == 160 and trackedFrame:GetWidth() * trackedFrame:GetEffectiveScale() == 80,
+	"track: plate-local cover size inherits distance scale exactly once")
 -- drop = 0.9 cover-heights below the plate (models hang below their nameplate)
-check(ptA and math.abs((ptA.y or 0) + 72) < 0.001, "track: centred below the plate by the drop factor")
+check(ptA and math.abs((ptA.y or 0) * trackedFrame:GetEffectiveScale() + 72) < 0.001,
+	"track: centred below the plate by the drop factor")
+
+-- The renderer owns plate coordinates; the addon may not query them. Move
+-- that native transform without a Lua tick and resolve only inside the stub.
+local function renderedCenter(frame)
+	local point = frame.points[1]
+	local parent = frame:GetParent()
+	if parent == point.relFrame and parent.nativeX then
+		return parent.nativeX + point.x * frame:GetEffectiveScale(),
+			parent.nativeY + point.y * frame:GetEffectiveScale()
+	end
+	return point.x, point.y
+end
+plateA.nativeX, plateA.nativeY = 500, 400
+local rx, ry = renderedCenter(trackedFrame)
+check(rx == 500 and ry == 328, "track: native transform places the cover below its spider plate")
+plateA.nativeX, plateA.nativeY = 750, 350
+rx, ry = renderedCenter(trackedFrame)
+check(rx == 750 and ry == 278,
+	"track: native model movement moves its cover before the next polling tick")
+
+-- Perspective changes between the 10 Hz scans: native parenting must scale
+-- BOTH the disc and its offset immediately, without another Lua update.
+plateA.effScale = 1
+check(trackedFrame:GetWidth() * trackedFrame:GetEffectiveScale() == 160
+	and ptA.y * trackedFrame:GetEffectiveScale() == -144,
+	"track: camera zoom scales the cover and drop between polling ticks")
+SBeGone.Tick()
+check(trackedFrame:GetWidth() == 160,
+	"track: next poll does not apply the inherited plate scale a second time")
+plateA.effScale = 0.5
 
 -- The plate gets bigger (camera moves in): the cover grows on the next tick.
 plateA:SetWidth(200)
 SBeGone.Tick()
-check(SBeGone.Cover.pool[trA].w == 160, "track: cover grows when the plate's apparent size grows")
+check(SBeGone.Cover.pool[trA].w == 320, "track: cover grows when the plate's local width grows")
 
 -- Tracked covers are not persisted (their position belongs to a spider that
 -- will not exist next session, and an anchored frame cannot be measured).
 SBeGone.Cover.Save()
 check(savedCount("TestWarrior") == 0, "track: anchored covers are not written to SavedVariables")
+
+-- Frame IDs are pool allocation IDs, not unit IDs. Swap the globals without
+-- changing the creatures, just as the client does when plates are recycled.
+setPlate(1, plateB)
+setPlate(2, plateA)
+SBeGone.Tick()
+check(SBeGone.Cover.pool[trA].frame:GetParent() == plateA,
+	"track: reordered frame numbers still follow the spider's unit token")
+check(SBeGone.PlateFrameFor("nameplate2", 2) == plateB,
+	"lookup: a recycled numeric suffix never overrides explicit unit identity")
+setPlate(1, plateA)
+setPlate(2, plateB)
+
+local mapped = makePlate(100, 0.5)
+mapped.unitToken = "nameplate1"
+C_NamePlate = { GetNamePlateForUnit = function() return mapped end }
+SBeGone.Tick()
+check(SBeGone.track.nameplate1 == trA and trackedFrame:GetParent() == mapped,
+	"track: a changed public mapping reparents the existing cover without duplicating it")
+mapped.unitToken = "nameplate2"
+check(SBeGone.PlateFrameFor("nameplate1", 1) == nil,
+	"lookup: a mapper returning a different unit is rejected")
+C_NamePlate.GetNamePlateForUnit = function() return nil end
+SBeGone.Tick()
+check(SBeGone.track.nameplate1 == nil and not SBeGone.Cover.IsAllocated(trA),
+	"track: valid unit with no mapped plate releases its cover instead of sticking forever")
+check(trackedFrame:GetParent() == UIParent,
+	"track: released covers leave the nameplate's movement and scale tree")
+C_NamePlate = nil
+
+-- The reduced client may expose GetUnit(), UnitFrame.unit, or no metadata.
+local lookup = setPlate(3, makePlate(100, 1))
+lookup.GetUnit = function() return "nameplate4" end
+check(SBeGone.PlateFrameFor("nameplate4", 4) == lookup,
+	"lookup: GetUnit resolves a plate whose frame number differs from its token")
+lookup.GetUnit = nil
+lookup.unitToken = nil
+lookup.UnitFrame = { unit = "nameplate4" }
+check(SBeGone.PlateFrameFor("nameplate4", 4) == lookup,
+	"lookup: UnitFrame.unit resolves the reduced client's plate")
+lookup.UnitFrame = nil
+lookup.unitToken = nil
+check(SBeGone.PlateFrameFor("nameplate3", 3) == nil,
+	"lookup: metadata-free clients do not guess frame ownership from numbers")
+lookup:Hide()
+check(SBeGone.PlateFrameFor("nameplate3", 3) == nil,
+	"lookup: hidden pooled frames cannot own a live cover")
+setPlate(3, nil)
+
+-- UI scale is independent of distance scale, including the existing visual
+-- bounds. A missing width falls back to the configured size in UI units.
+UIParent.scale = 0.8
+plateA.effScale = 0.4
+plateA:SetWidth(100)
+SBeGone.Tick()
+trA = SBeGone.track.nameplate1
+trackedFrame = SBeGone.Cover.pool[trA].frame
+check(trackedFrame:GetWidth() * trackedFrame:GetEffectiveScale() / UIParent.scale == 80,
+	"track: non-default UI scale stays independent of perspective scale")
+plateA:SetWidth(10000)
+SBeGone.Tick()
+check(trackedFrame:GetWidth() * trackedFrame:GetEffectiveScale() / UIParent.scale == 512,
+	"track: maximum cover size remains 512 UI units after parenting")
+plateA:SetWidth(1)
+SBeGone.Tick()
+check(trackedFrame:GetWidth() * trackedFrame:GetEffectiveScale() / UIParent.scale == 16,
+	"track: minimum cover size remains 16 UI units after parenting")
+local getWidth = plateA.GetWidth
+plateA.GetWidth = nil
+SBeGone.Tick()
+check(math.abs(trackedFrame:GetWidth() * trackedFrame:GetEffectiveScale() / UIParent.scale - SBeGone.Cover.Size()) < 0.000001,
+	"track: unavailable plate width uses the fixed UI size without double scaling")
+plateA.GetWidth = getWidth
+UIParent.scale, plateA.effScale = 1, 0.5
+plateA:SetWidth(100)
+
+-- A token changing to a non-spider is positive evidence of reuse. Grace
+-- applies only to a missing token, never to a known different creature.
+setUnit("nameplate1", { name = "Young Scavenger", level = 24, famId = 1, id = 1499 })
+SBeGone.Tick()
+check(SBeGone.track.nameplate1 == nil and not trackedFrame:IsShown(),
+	"track: token reuse for a non-spider removes the old cover on the first tick")
+setUnit("nameplate1", { name = "Forest Spider", level = 24, famId = 3, id = 1504 })
+SBeGone.Tick()
+flushDisplay()
+trA = SBeGone.track.nameplate1
 
 -- Spider walks away: grace first, then release.
 units.nameplate1 = nil
@@ -639,6 +771,27 @@ for _ = 1, 6 do SBeGone.Tick() end
 flushDisplay()
 check(SBeGone.Cover.ShownCount() == 0 and SBeGone.track.nameplate1 == nil,
 	"track: cover is auto-released once the spider is gone")
+local released = SBeGone.Cover.pool[trA].frame
+local reused = SBeGone.Cover.Allocate("hover", 350, 250)
+check(reused == trA and released:GetParent() == UIParent and released:GetEffectiveScale() == 1,
+	"pool: a formerly tracked slot becomes an ordinary screen cover when reused")
+local dragOK = pcall(SBeGone.Cover.SyncDrags)
+check(dragOK, "pool: released plate children can be measured again without restricted geometry")
+SBeGone.Cover.Release(reused)
+
+local refused = SBeGone.Cover.AllocateUnpositioned("track", "track")
+local refusedFrame = SBeGone.Cover.pool[refused].frame
+local originalParent = refusedFrame.SetParent
+refusedFrame.SetParent = function(self, parent)
+	if parent == plateA then error("parenting refused", 0) end
+	return originalParent(self, parent)
+end
+check(not SBeGone.Cover.PlaceTracked(refused, plateA, 50),
+	"track: client parenting refusal is reported as an attachment failure")
+SBeGone.Cover.Release(refused)
+check(refusedFrame:GetParent() == UIParent and not refusedFrame:IsShown(),
+	"track: refused attachment leaves no visible orphaned cover")
+refusedFrame.SetParent = originalParent
 
 -- Eviction preference: a full pool of parked shields is not eaten while
 -- tracked covers exist to sacrifice instead.
@@ -819,8 +972,8 @@ for i = 1, SBeGone.Cover.MAX do
 	if SBeGone.Cover.pool[i].allocated then stillAllocated = stillAllocated + 1 end
 end
 check(stillAllocated == 0, "anchor refusal: no position-less cover is left allocated")
-check(SBeGoneSettings.autoTrack == false,
-	"anchor refusal: a run of refusals switches auto-track off (fail safe, no spam)")
+check(SBeGone.autoSuspended == true and SBeGoneSettings.autoTrack == true,
+	"anchor refusal: pauses coverage without silently enabling another detection mode")
 check(SBeGone.trackFailures >= 20, "anchor refusal: refusals counted for diagnostics")
 check(#out == 1 and out[1]:find("would not anchor") ~= nil,
 	"anchor refusal: reported once, not on every tick")
@@ -893,6 +1046,183 @@ SBeGone.Cover.Save()
 check(savedCount(SBeGone.char) == expect,
 	"queue: Save writes exactly the positioned, unanchored covers (no losers)")
 SBeGone.Cover.ClearAll()
+
+-- ---- Forever restrictions and Classic-only baseline ----------------------
+local countIDs = 0
+for _ in pairs(SBeGone.DB.ids) do countIDs = countIDs + 1 end
+check(countIDs == 124 and SBeGone.DB.counts.ids == countIDs,
+	"classic data: declared count matches the shipped creature database")
+local excludedIDs = { 17236, 16350, 16351, 16352, 17522, 17523, 17683,
+	18466, 18467, 18647, 20714, 20998, 22044, 22132 }
+local includesExpansion = false
+for _, id in ipairs(excludedIDs) do
+	if SBeGone.DB.ids[id] then includesExpansion = true end
+end
+check(not includesExpansion, "classic data: TBC-only creatures are excluded, including Tcha'kaz in a Classic zone")
+check(SBeGone.DB.ids[15952] and SBeGone.DB.ids[16698],
+	"classic data: original Naxxramas creatures are retained without an arbitrary numeric ID cutoff")
+
+SBeGone.autoSuspended = false
+SBeGoneSettings.autoTrack = true
+SBeGoneSettings.arrange = false
+SBeGone.Cover.ClearAll()
+SBeGone.ResetTrack()
+clearUnits()
+setUnit("player", { name = "RestrictedTester", level = 60, player = true })
+setUnit("nameplate1", { name = "Forest Spider", level = 10, id = 1504, famId = 3 })
+local safePlate = setPlate(1, makePlate(100, 0.5))
+C_NamePlate = { GetNamePlateForUnit = function() return safePlate end }
+
+-- A sentinel models denied values. It is deliberately not a real Blizzard
+-- secret: actual enforcement still requires a live client test.
+local denied = {}
+issecretvalue = function(value) return rawequal(value, denied) end
+canaccessvalue = function(value) return not rawequal(value, denied) end
+check(not SBeGone.Access.CanRead(denied), "access: secret values are rejected before interpretation")
+local first, second, queryOK = SBeGone.Access.Query(function() return "Spider", denied end)
+check(not queryOK and first == nil and second == nil,
+	"access: a secret second return never leaks into family comparisons")
+C_Secrets = { ShouldUnitIdentityBeSecret = function() return true end }
+local realName = UnitName
+local identityCalls = 0
+UnitName = function(unit) identityCalls = identityCalls + 1; return realName(unit) end
+check(not SBeGone.Units.IsSpider("nameplate1") and identityCalls == 0,
+	"access: identity restriction prevents name/ID detection rather than trying another channel")
+UnitName = realName
+C_Secrets = nil
+
+local realID, realFamily, realLevel = UnitCreatureID, UnitCreatureFamily, UnitLevel
+UnitCreatureID = function() return denied end
+UnitCreatureFamily = function() return "Beast", denied end
+UnitName = function(unit) if unit == "player" then return "Tester" end; return denied end
+check(not SBeGone.Units.IsSpider("nameplate1"),
+	"access: secret names, IDs and family results cannot trigger a guessed cover")
+UnitCreatureID, UnitCreatureFamily, UnitName = realID, realFamily, realName
+UnitLevel = function() return denied end
+check(not SBeGone.Units.IsSpider("nameplate1"),
+	"access: secret levels are never used in the configured numeric range")
+UnitLevel = realLevel
+
+safePlate.IsForbidden = function() return true end
+local originalShown = safePlate.IsShown
+safePlate.IsShown = function() error("forbidden frame must not be inspected", 0) end
+check(SBeGone.PlateFrameFor("nameplate1", 1) == nil,
+	"access: forbidden plates are rejected before their other methods are called")
+safePlate.IsForbidden, safePlate.IsShown = nil, originalShown
+safePlate.GetUnit = function() return denied end
+check(SBeGone.PlateFrameFor("nameplate1", 1) == nil,
+	"access: secret plate metadata is not treated as missing metadata")
+safePlate.GetUnit = nil
+C_NamePlate.GetNamePlateForUnit = function() error("lookup restricted", 0) end
+check(SBeGone.PlateFrameFor("nameplate1", 1) == nil,
+	"access: a rejected public lookup is not bypassed with a global-frame search")
+C_NamePlate.GetNamePlateForUnit = function() return safePlate end
+local realWidth, realScale = safePlate.GetWidth, safePlate.GetEffectiveScale
+safePlate.GetWidth = function() return denied end
+safePlate.GetEffectiveScale = function() return denied end
+local geometryOK = pcall(SBeGone.TrackTick)
+local safeSlot = SBeGone.track.nameplate1
+check(geometryOK and safeSlot and SBeGone.Cover.pool[safeSlot].frame:GetParent() == safePlate,
+	"access: inaccessible size/scale uses configured geometry and native parenting without secret arithmetic")
+check(SBeGone.Cover.pool[safeSlot].frame.mouse == false,
+	"access: a tracked cover always has mouse input explicitly disabled")
+safePlate.GetWidth, safePlate.GetEffectiveScale = realWidth, realScale
+
+local pendingFrame = SBeGone.Cover.pool[safeSlot].frame
+local parentMethod = pendingFrame.SetParent
+pendingFrame.SetParent = function(self, parent)
+	if parent == UIParent then error("detach blocked in this context", 0) end
+	return parentMethod(self, parent)
+end
+check(not SBeGone.Cover.Release(safeSlot), "cleanup: rejected detachment is reported")
+local pending = SBeGone.Cover.pool[safeSlot]
+check(pending.pendingRelease and pending.anchored and not pending.allocated,
+	"cleanup: blocked plate children remain marked attached and unavailable for reuse")
+check(pcall(SBeGone.Cover.SyncDrags), "cleanup: blocked children are never measured as screen covers")
+SBeGone.Cover.Save()
+check(savedCount(SBeGone.char) == 0, "cleanup: deferred children are not persisted")
+local differentSlot = SBeGone.Cover.Allocate("hover", 100, 200)
+check(differentSlot ~= safeSlot, "cleanup: another cover cannot adopt a blocked plate child")
+SBeGoneSettings.arrange = true
+SBeGone.Cover.ApplyInteractivity()
+check(pendingFrame.mouse == false, "cleanup: arrange mode keeps blocked plate children click-through")
+SBeGoneSettings.arrange = false
+pendingFrame.SetParent = parentMethod
+SBeGone.Cover.RetryReleases()
+check(not pending.pendingRelease and not pending.anchored and pendingFrame:GetParent() == UIParent,
+	"cleanup: ordinary API retry releases a deferred child when the client permits it")
+local freeBefore = #SBeGone.Cover.free
+SBeGone.Cover.Release(safeSlot)
+check(#SBeGone.Cover.free == freeBefore, "cleanup: repeated release cannot duplicate free pool indices")
+SBeGone.Cover.ClearAll()
+SBeGone.ResetTrack()
+SBeGone.Cover.ApplyInteractivity()
+
+-- Both old global event arguments and the timer fallback remain supported.
+event, arg1 = "NAME_PLATE_UNIT_ADDED", "nameplate1"
+SBeGone.eventFrame.scripts.OnEvent()
+local eventSlot = SBeGone.track.nameplate1
+check(eventSlot ~= nil, "events: a plate-added event attaches a cover before the next scan")
+event = "NAME_PLATE_UNIT_REMOVED"
+SBeGone.eventFrame.scripts.OnEvent()
+check(SBeGone.track.nameplate1 == nil and not SBeGone.Cover.IsAllocated(eventSlot),
+	"events: a plate-removed event releases its cover immediately")
+event, arg1 = nil, nil
+
+local originalUpdate, originalHover = SBeGone.Update, SBeGone.HoverTick
+local unexpectedHover = 0
+SBeGone.HoverTick = function() unexpectedHover = unexpectedHover + 1 end
+SBeGone.Update = function() error("unexpected restricted action", 0) end
+capture(function() for _ = 1, 4 do SBeGone.Tick() end end)
+SBeGone.Update = originalUpdate
+SBeGone.Tick()
+check(SBeGone.autoSuspended and SBeGoneSettings.autoTrack and unexpectedHover == 0,
+	"errors: repeated failures pause coverage instead of enabling sticky detection")
+capture(function() SBeGone.Slash("auto on") end)
+check(not SBeGone.autoSuspended, "errors: explicit auto-on clears the suspended state")
+SBeGone.HoverTick = originalHover
+
+-- All pool slots may be temporarily unavailable in a restricted context.
+-- Restoring must preserve the saved layout and finish once cleanup is legal.
+SBeGone.Cover.ClearAll()
+SBeGone.ResetTrack()
+local blockedFrames = {}
+for _ = 1, SBeGone.Cover.MAX do
+	local index = SBeGone.Cover.AllocateUnpositioned("track", "track")
+	SBeGone.Cover.PlaceTracked(index, safePlate, 50)
+	local frame = SBeGone.Cover.pool[index].frame
+	blockedFrames[frame] = frame.SetParent
+	frame.SetParent = function(self, parent)
+		if parent == UIParent then error("cleanup unavailable", 0) end
+		return blockedFrames[self](self, parent)
+	end
+	SBeGone.Cover.Release(index)
+end
+check(#SBeGone.Cover.free == 0, "cleanup: fully blocked pool has no reusable slots")
+check(SBeGone.Cover.Allocate("park", 50, 60) == nil,
+	"cleanup: exhausted blocked pool returns no cover instead of reusing a restricted frame")
+local restoreCharacter = SBeGone.char
+SBeGoneSettings.covers[restoreCharacter] = {
+	init = true, list = { { x = 90, y = 120, w = 80, h = 80, kind = "park" } },
+}
+local restoreOK, restoreResult = pcall(SBeGone.Cover.Restore, restoreCharacter)
+check(restoreOK and restoreResult == false and SBeGone.Cover.deferredRestore == restoreCharacter,
+	"cleanup: a layout restore defers safely when all slots are blocked")
+SBeGone.Cover.Save()
+check(savedCount(restoreCharacter) == 1,
+	"cleanup: deferred restore cannot erase the existing saved layout")
+for frame, method in pairs(blockedFrames) do frame.SetParent = method end
+SBeGone.Cover.RetryReleases()
+flushDisplay()
+check(SBeGone.Cover.deferredRestore == nil and SBeGone.Cover.ShownCount() == 1,
+	"cleanup: saved layout restores automatically after normal detachment is permitted")
+check(savedCount(restoreCharacter) == 1 and findCover(90, 120) ~= nil,
+	"cleanup: restored coordinates and persistence survive complete pool exhaustion")
+C_NamePlate, C_Secrets, issecretvalue, canaccessvalue = nil, nil, nil, nil
+clearUnits()
+setPlate(1, nil)
+SBeGone.Cover.ClearAll()
+SBeGone.ResetTrack()
 
 if fails > 0 then
 	error(fails .. " test(s) FAILED", 0)

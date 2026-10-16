@@ -22,7 +22,8 @@ they power the zone hints (/spider where) once GetZoneText is SBG-verified.
 
 SBeGone = SBeGone or {}
 SBeGone.DB = {
-	counts = { ids = 125, patterns = 14 },
+	counts = { ids = 124, patterns = 14 },
+	content = "Classic Azeroth baseline; Forever additions detected by family/name",
 
 	-- Creature (entry) IDs, grouped by home zone.
 	ids = {
@@ -277,7 +278,6 @@ SBeGone.DB = {
     -- The Hinterlands
     -- ============================================
     [2686] = true,  -- Witherbark Broodguard
-    [17236] = true, -- Tcha'kaz
 },
 
 	-- Name fragments, matched case-insensitively against the unit's name.
