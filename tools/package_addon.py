@@ -37,6 +37,7 @@ def main():
         for source in sorted(set(sources)):
             archive.write(source, "SpidersBeGone/" + source.relative_to(addon).as_posix())
         archive.write(root / "README.md", "SpidersBeGone/README.md")
+        archive.write(root / "LICENSE", "SpidersBeGone/LICENSE")
         archive.write(root / "LICENSE", "SpidersBeGone/LICENSE.txt")
         # Ship current controls only; archived plans advertise removed features.
         for name in ("HANDOFF.md", "TRACKING-ONLY.md", "COVER-IMAGES.md", "CORPSE-HANDLING.md", "DATA-SOURCES.md"):
