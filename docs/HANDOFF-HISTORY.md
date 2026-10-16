@@ -3,9 +3,9 @@
 Historical probes and previous behavior only. For current instructions use
 [HANDOFF.md](HANDOFF.md) and [TRACKING-ONLY.md](TRACKING-ONLY.md).
 
-# HANDOFF — resume here (fresh session)
+# [SUPERSEDED — see HANDOFF.md] HANDOFF — resume here (fresh session)
 
-**Current local build: v0.2.5.** Use [NATIVE-OVERLAYS.md](NATIVE-OVERLAYS.md)
+**Current local build: v0.2.5.** (historical — the deployed build is v0.2.7) Use [NATIVE-OVERLAYS.md](NATIVE-OVERLAYS.md)
 for behavior and pending live tests, and [DATA-SOURCES.md](DATA-SOURCES.md)
 for the Classic-only scope and NoSpider attribution. Older notes below
 describe prior releases and may make stronger API claims than live evidence supports.
@@ -829,7 +829,10 @@ the §12 probe set on the release client if the interface number changes
   to `AddOns/`, `diff -r` clean. Remaining live check: walk a spider
   far-to-close, read `SBG| near:`, set the threshold, re-check the legs.
 
-## Next session, in order
+## Next session, in order [SUPERSEDED — historical v0.2.3 protocol]
+
+The live next-round checklist is in [HANDOFF.md](HANDOFF.md) ("Next in-game
+round (v0.2.7)"). The v0.2.3 protocol below is retained for the record:
 
 1. User `/reload`s (or restarts) the installed **v0.2.3** and runs the
    **M1–M8** battery in §Resume (round 4), pasting every `SBG4|` line, plus the

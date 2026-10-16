@@ -94,3 +94,42 @@ tracking-only refactor):
 - Still to verify on the live client: the `enable`/`disable` reload path,
   migration of a real pre-schema-3 save, and the near-field threshold
   (`/spider debug on` → walk far-to-close at a spider → `/spider near N`).
+
+## Next in-game round (v0.2.7)
+
+Deployed and pushed state: commit `75571b9` (`feat: near-field boost for
+close-range spiders (v0.2.7)`), `AddOns/` in sync (`diff -r` clean), packaged
+suite **221 checks** against the installed sources. ZIP:
+`SpidersBeGone-0.2.7-fixed.zip`.
+
+In order:
+
+1. `/reload`; bare `/spider` must report **v0.2.7** with `grow=1.6 drop=0.5
+   near=0`, tracking enabled, `limited=false`.
+2. **Regression re-check** (30 s): Tirisfal, walk up on spiders — covers
+   attach, follow movement and zoom, ground still click-through.
+3. **Near-field calibration (new):**
+   - `/spider debug on`
+   - Stand as close to a spider as practical (the distance where the legs
+     showed in the 2026-10-16 screenshot); read the `SBG| near:` line →
+     **close value**.
+   - Step back ~30 yd → **far value** (the line prints 1×/s per tracked
+     plate: `nameplate1=<apparent width in UI-scale px>`).
+   - `/spider near N` with N just **above** the far value.
+   - Walk in again: the legs must be inside the cover, and the cover must
+     keep tracking while moving/zooming. The size step at the threshold is
+     by design binary; if it looks too abrupt, lower `/spider grow` slightly.
+4. **Enable/disable path** (leftover from the v0.2.6 round):
+   `/spider disable` → every cover hides; `/reload` → still disabled, no
+   covers; `/spider enable` → tracking resumes immediately.
+5. **Real stale-save migration:** the owner's live save is pre-schema-3 (no
+   `autoTrack`/`trackScale`/`drop`/`near*` keys). It is migrated
+   automatically on first login of a v0.2.6+ build — confirm step 1's
+   reported defaults, tracking on, and **no ghost cursor covers** from the
+   old mode. (The Lua suite already covers the same path with a simulated
+   stale save.)
+
+If anything fails: keep `/spider debug on`, reproduce, and collect the `SBG|`
+chat lines (especially `SBG| near:` — the evidence for retuning
+`nearThreshold`/`nearBoost`) plus a screenshot. Do not change the sizing
+model (plate-proportional + near-band boost) without that data.
