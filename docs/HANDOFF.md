@@ -1,9 +1,11 @@
-# Handoff: v0.2.6 tracking-only covers
+# Handoff: v0.2.7 tracking-only covers
 
-Current implementation and controls are in [TRACKING-ONLY.md](TRACKING-ONLY.md).
-The packaged Lua 5.1 suite passes offline. Core tracking was in-game
-verified 2026-10-16 (below); the tracking-only enable/disable path is the
-remaining live check.
+Current implementation and controls are in [TRACKING-ONLY.md](TRACKING-ONLY.md)
+(v0.2.6 snapshot; v0.2.7 adds the near-field boost described below). The
+packaged Lua 5.1 suite passes offline. Core tracking was in-game verified
+2026-10-16 (below); the remaining live checks are the tracking-only
+enable/disable path, migration of a real pre-schema-3 save, and calibrating
+the near-field threshold in game.
 
 ## Current behavior
 
@@ -18,9 +20,15 @@ remaining live check.
   mode. New installs have zero manual shields; existing configured manual
   shields and their positions are preserved. Disabled commands and saved
   layout restoration cannot show covers or capture mouse input.
-- Settings schema 3 removes old `autoTrack`/`stickyCovers` flags and saved
-  cursor-generated covers across all characters. Explicit parked records
-  remain. SavedVariables arriving after script load are also migrated.
+- **Near-field boost (v0.2.7):** the client holds nameplate apparent size in
+  a narrow band while the model keeps growing as the camera approaches, so a
+  plate-proportional cover under-covers close spiders. True camera distance
+  is unmeasurable on this client (all position APIs absent), so the boost is
+  not graded by distance: when a plate's apparent width
+  (`GetWidth × GetEffectiveScale`, UI-scale px) reaches `nearThreshold`
+  (`/spider near`, default `0` = off), the tracked cover is multiplied by
+  `nearBoost` (default `2.6`). `/spider debug on` prints an `SBG| near:`
+  line (1 Hz) with each plate's apparent width for calibration.
 - Secret identities and forbidden frames are skipped. Rejected cleanup
   defers reuse. Repeated errors pause tracking; enable explicitly retries.
 
@@ -83,5 +91,6 @@ tracking-only refactor):
   at 0.5 the whole model (hanging ≈0.2–0.3 cover-heights below plate
   centre) is inside the cover with minimal nameplate overlap. `drop` is in
   cover-height units, so the calibration is distance-invariant.
-- Still to verify on this tracking-only build in the live client: the
-  `enable`/`disable` reload path and migration of a real pre-schema-3 save.
+- Still to verify on the live client: the `enable`/`disable` reload path,
+  migration of a real pre-schema-3 save, and the near-field threshold
+  (`/spider debug on` → walk far-to-close at a spider → `/spider near N`).

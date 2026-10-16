@@ -26,11 +26,11 @@ pass; this update has **not** been installed or verified in game. Start with
 [TRACKING-FIX.md](TRACKING-FIX.md). The v0.2.3 notes below are historical;
 their claims that a successful anchor probe proves movement are superseded.
 
-Last updated: **2026-10-16**, after implementing **M3.5 auto-track** and the
-owner's curated **spider database**, both shipped in **v0.2.3** (offline suite
-**144 checks, ALL PASS**; installed and sync-verified). **A new agent session
-starts at §Resume (round 4) below** — that section is the in-game verification
-protocol for the build that is sitting in `AddOns/` right now.
+Last updated: **2026-10-16**, after the in-game verification round, the
+tracking-only refactor (**v0.2.6**), and the near-field boost (**v0.2.7**).
+The suite passes against packaged sources; the v0.2.7 build is deployed in
+`AddOns/`. **A new agent session starts at HANDOFF.md** — the remaining
+in-game checks are listed there.
 
 ## One-line status
 
@@ -811,6 +811,23 @@ the §12 probe set on the release client if the interface number changes
   Geometry test expectations recalibrated; suite passes against packaged
   sources. Deployed to `AddOns/`, `diff -r` clean. Remaining live check:
   the `enable`/`disable` reload path on this build.
+- **2026-10-16 (near-field round):** owner screenshot of the verified build:
+  everything tracks, but the **closest** visible spider shows its legs —
+  the cover is plate-sized and the plate's apparent size is held in a
+  narrow band while the 3D model keeps growing ~4× toward the camera. No
+  camera-distance signal exists on this client (all position APIs absent,
+  docs/API-VERIFICATION.md), so **v0.2.7** adds a *band* detector, not a
+  distance function: when the plate's apparent width
+  (`GetWidth × GetEffectiveScale`, UI-scale px) reaches `nearThreshold`
+  (`/spider near N`, default `0` = off), the tracked size is multiplied by
+  `nearBoost` (default `2.6`, still inside the 512 UI clamp). `/spider
+  debug on` prints each plate's apparent width (`SBG| near:`, 1 Hz) for
+  calibration; the selftest line reports `near=`. New keys merge into old
+  saves like any additive default (schema stays 3). Five new checks in the
+  Lua 5.1 suite (boost on/off, drop ratio preserved under boost, stale-save
+  merge of the new keys); suite passes against packaged sources; deployed
+  to `AddOns/`, `diff -r` clean. Remaining live check: walk a spider
+  far-to-close, read `SBG| near:`, set the threshold, re-check the legs.
 
 ## Next session, in order
 

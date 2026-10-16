@@ -16,7 +16,7 @@ Client facts (docs/PLAN.md §2, verified in-client 2026-10-13):
 ]]
 
 SBeGone = SBeGone or {}
-SBeGone.version = "0.2.6"
+SBeGone.version = "0.2.7"
 local A = SBeGone.Access
 
 SBeGone.hidden = nil  -- panic-hide seam (M4); true hides every cover
@@ -65,6 +65,19 @@ local DEFAULTS = {
 	-- inside the cover with only minimal nameplate overlap.
 	drop = 0.5,
 	trackRelease = 0.5, -- seconds a cover survives losing its plate (anti-flicker)
+	-- Near-field boost. The client holds nameplate APPARENT size in a narrow
+	-- band while the model keeps growing as the camera approaches, so the
+	-- calibrated plate-proportional cover under-covers close spiders (legs
+	-- showing - owner screenshot 2026-10-16). True camera distance is
+	-- unmeasurable on this client (every position API absent, see
+	-- docs/API-VERIFICATION.md); the near band is detected on the one
+	-- distance signal the plate does expose: its apparent width
+	-- (GetWidth x GetEffectiveScale, in UI-scale px). At/above nearThreshold
+	-- the plate is saturated next to the model and the tracked size is
+	-- multiplied by nearBoost. Calibrate: /spider debug on, walk 30y -> 2y
+	-- at a spider, read the 'SBG| near:' line, then /spider near <N>. 0 = off.
+	nearThreshold = 0,
+	nearBoost = 2.6,
 	arrange = false,    -- true = covers take the mouse so they can be dragged
 	debug = false,
 }
@@ -208,6 +221,21 @@ function SBeGone.Slash(msg)
 			SBeGoneSettings[key] = v
 			print(("SBG| %s = %.2f"):format(key, v))
 		end
+	elseif first == "near" then
+		-- Near-field boost threshold: the plate's apparent width (UI-scale px,
+		-- from the 'SBG| near:' debug line) at/above which the client is
+		-- holding the nameplate in its near band and the tracked cover is
+		-- multiplied by the near-field boost (close spiders, legs showing).
+		local v = tonumber(string.match(msg or "", "^%s*%S+%s+(%S+)"))
+		if not v then
+			print(("SBG| near = %s (set with: /spider near N - 0 off; read N from the 'SBG| near:' debug line)"):format(
+				tostring(SBeGoneSettings.nearThreshold)))
+		else
+			v = math.floor(v)
+			if v < 0 then v = 0 elseif v > 1000 then v = 1000 end
+			SBeGoneSettings.nearThreshold = v
+			print(("SBG| near = %d (0 = off)"):format(v))
+		end
 	elseif first == "release" then
 		-- Tracked covers return on the next scan; manual shields are kept.
 		if not SBeGone.ready then
@@ -286,7 +314,7 @@ function SBeGone.Slash(msg)
 	elseif first == "help" then
 		-- No '|' chars in chat text: the WoW chat filter eats chat-control
 		-- sequences like |t / |h (SBG11) — use ' / ' separators.
-		print("SBG| /spider [enable / disable / toggle / clear / release / arrange N / parks N / grow N / drop N / size N / name X / names / forget X / debug N / help]")
+		print("SBG| /spider [enable / disable / toggle / clear / release / arrange N / parks N / grow N / drop N / near N / size N / name X / names / forget X / debug N / help]")
 	else
 		print(("SBG| unknown subcommand '%s' - /spider help for usage"):format(first))
 	end
@@ -335,9 +363,10 @@ function SBeGone.Selftest()
 			if SBeGone.Cover.IsAllocated(slot) then tracked = tracked + 1 end
 		end
 	end
-	print(("SBG| mode=tracking tracked=%d arrange=%s grow=%s drop=%s | covers shown=%d/%d | saved=%d | size=%s | limited=%s paused=%s"):format(
+	print(("SBG| mode=tracking tracked=%d arrange=%s grow=%s drop=%s near=%s | covers shown=%d/%d | saved=%d | size=%s | limited=%s paused=%s"):format(
 		tracked, tostring(s.arrange), tostring(s.trackScale),
-		tostring(s.drop), SBeGone.Cover.ShownCount(), SBeGone.Cover.MAX, saved,
+		tostring(s.drop), tostring(s.nearThreshold),
+		SBeGone.Cover.ShownCount(), SBeGone.Cover.MAX, saved,
 		tostring(s.coverSize), tostring(SBeGone.coverageLimited == true), tostring(SBeGone.autoSuspended == true)))
 end
 
@@ -481,13 +510,19 @@ end
 -- Tracked covers inherit the plate's effective scale via SetParent. Multiplying
 -- that scale into their size as well would apply perspective twice. Only the
 -- screen-size limits/fallback need converting from UI units to plate units.
-local function plateSize(plate, ourScale, grow, fallback)
-	local ps = ourScale
-	local v = A.Query(function() return plate:GetEffectiveScale() end)
-	if type(v) == "number" and v > 0 then ps = v end
-	local toLocal = ourScale / ps
-	local size = fallback * toLocal
+-- The only plate properties this client answers (N7); everything else
+-- throws (SBG15). Both reads are access-guarded.
+local function plateReads(plate)
 	local w = A.Query(function() return plate:GetWidth() end)
+	local ps = A.Query(function() return plate:GetEffectiveScale() end)
+	return w, ps
+end
+
+local function plateSize(w, ps, ourScale, grow, fallback)
+	local p = ourScale
+	if type(ps) == "number" and ps > 0 then p = ps end
+	local toLocal = ourScale / p
+	local size = fallback * toLocal
 	if type(w) == "number" and w > 0 then size = w * grow end
 	return math.max(MIN_TRACK * toLocal, math.min(MAX_TRACK * toLocal, size))
 end
@@ -544,10 +579,13 @@ function SBeGone.TrackTick()
 	local t = SBeGone.track
 	local grow = tonumber(s.trackScale) or 1.6
 	local dropK = tonumber(s.drop) or 0.5
+	local nearT = tonumber(s.nearThreshold) or 0
+	local nearB = tonumber(s.nearBoost) or 2.6
 	local grace = math.max(1, math.floor(((tonumber(s.trackRelease) or 0.5)
 		/ tickInterval) + 0.5))
 	local ourScale = SBeGone.OurScale()
 	local live = {}
+	local nearDbg = SBeGone.debug and {} or nil
 
 	for i = 1, MAX_PLATES_SCAN do
 		local token = "nameplate" .. i
@@ -574,7 +612,18 @@ function SBeGone.TrackTick()
 						end
 					end
 					if slot ~= nil then
-						local size = plateSize(plate, ourScale, grow, C.Size())
+						local w, ps = plateReads(plate)
+						local apparent = (type(w) == "number" and w > 0
+							and type(ps) == "number" and ps > 0) and (w * ps) or nil
+						local growK = grow
+						if nearT > 0 and apparent ~= nil and apparent >= nearT then
+							growK = grow * nearB
+						end
+						local size = plateSize(w, ps, ourScale, growK, C.Size())
+						if nearDbg then
+							nearDbg[#nearDbg + 1] = token .. "="
+								.. (apparent and ("%.1f"):format(apparent) or "?")
+						end
 						C.Resize(slot, size, size)
 						-- Models hang BELOW their nameplate, hence the drop.
 						if not C.PlaceTracked(slot, plate, size * dropK) then
@@ -593,6 +642,17 @@ function SBeGone.TrackTick()
 					SBeGone.coverageLimited = true
 				end
 			end
+		end
+	end
+
+	-- Calibration readout (throttled to 1/second): the plate's apparent
+	-- width per tracked spider, for choosing the near-field threshold.
+	if nearDbg and #nearDbg > 0 then
+		local now = GetTime()
+		if now - (SBeGone.nearDbgAt or 0) >= 1 then
+			SBeGone.nearDbgAt = now
+			table.sort(nearDbg)
+			print("SBG| near: " .. table.concat(nearDbg, " "))
 		end
 	end
 

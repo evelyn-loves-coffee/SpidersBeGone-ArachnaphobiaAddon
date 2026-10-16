@@ -770,6 +770,31 @@ plateA.GetWidth = getWidth
 UIParent.scale, plateA.effScale = 1, 0.5
 plateA:SetWidth(100)
 
+-- Near-field boost (2026-10-16 owner screenshot: the closest visible spider
+-- showed its legs). The client holds nameplate apparent size in a narrow
+-- band while the model keeps growing as the camera approaches, so the
+-- calibrated cover under-covers close spiders. True camera distance is
+-- unmeasurable on this client (every position API absent -
+-- docs/API-VERIFICATION.md); the near band is detected on the plate's
+-- apparent width (width x scale, UI-scale px).
+SBeGoneSettings.nearThreshold = 40 -- plate apparent width is 100 x 0.5 = 50
+SBeGoneSettings.nearBoost = 2.5
+SBeGone.Tick()
+check(trackedFrame:GetWidth() == 100 * 1.6 * 2.5,
+	"near: plate at/above the threshold gets the near-field size boost")
+local ptNear = SBeGone.Cover.pool[trA].frame.points[1]
+check(ptNear.y * trackedFrame:GetEffectiveScale() == -100,
+	"near: the boosted cover keeps the drop ratio below the plate")
+plateA.effScale = 0.2 -- apparent 20 < 40: a far spider
+SBeGone.Tick()
+check(trackedFrame:GetWidth() == 160,
+	"near: plate below the threshold keeps the calibrated size")
+plateA.effScale = 0.5
+SBeGoneSettings.nearThreshold = 0
+SBeGoneSettings.nearBoost = 2.6
+SBeGone.Tick()
+check(trackedFrame:GetWidth() == 160, "near: threshold 0 disables the boost")
+
 -- A token changing to a non-spider is positive evidence of reuse. Grace
 -- applies only to a missing token, never to a known different creature.
 setUnit("nameplate1", { name = "Young Scavenger", level = 24, famId = 1, id = 1499 })
@@ -1294,6 +1319,8 @@ check(SBeGoneSettings.autoTrack == nil and SBeGoneSettings.stickyCovers == nil,
 	"settings: stale save migrated — retired mode flags removed (schema 3)")
 check(SBeGoneSettings.trackScale == 1.6,
 	"settings: stale save re-merged — trackScale default restored")
+check(SBeGoneSettings.nearThreshold == 0 and SBeGoneSettings.nearBoost == 2.6,
+	"settings: stale save re-merged — near-field defaults restored (boost off)")
 check(SBeGoneSettings.drop == 0.5,
 	"settings: stale save re-merged — drop default restored (2026-10-16 calibration)")
 check(SBeGoneSettings.parkCount == 8,

@@ -4,8 +4,9 @@ Addon for **World of Warcraft Forever** (classic 1.x-line client, v1.60.1) that
 covers spider models with a nameplate-attached UI element. UI-layer only: no model
 swaps, no game-file modification.
 
-**Status: v0.2.6 tracking only — tracking in-game verified 2026-10-16 (Tirisfal);
-`drop` default calibrated in the same round.**
+**Status: v0.2.7 tracking only — tracking in-game verified 2026-10-16 (Tirisfal);
+`drop` default calibrated in the same round; near-field boost added for
+spiders that are close enough to outgrow the plate-sized cover.**
 Tracked covers are now **children of the spider's nameplate**, so native
 movement and scale apply to the cover and its offset between polling ticks.
 The public unit-to-nameplate mapper is preferred; a metadata fallback requires
@@ -34,7 +35,7 @@ for the historical design and client-probe records.
 Extract the fixed ZIP and replace the `SpidersBeGone/` folder in your client's
 `Interface/AddOns/` directory, then log in or `/reload`. The `.toc` must be at
 `Interface/AddOns/SpidersBeGone/SpidersBeGone.toc`, without an extra nested
-repository folder. `/spider` should report **v0.2.6**.
+repository folder. `/spider` should report **v0.2.7**.
 
 Enable enemy nameplates in the game. The addon starts enabled on a new install;
 `/spider enable` also enables tracking immediately and retries paused coverage.
@@ -46,6 +47,20 @@ The cover follows the visible nameplate. Stacking or screen-edge clamping by
 the game can move a nameplate away from the model; this client exposes no usable
 world-to-screen projection to correct that independently. Exact model coverage
 still needs an in-game check while moving, rotating the camera, and zooming.
+
+**Near-field boost:** the client holds nameplate apparent size in a narrow
+band while the model keeps growing as the camera approaches, so a
+plate-proportional cover under-covers close spiders (legs showing). True
+camera distance is unmeasurable on this client (every position API is
+absent), so the boost is not graded by distance: when a plate's apparent
+width reaches `/spider near`'s threshold, its cover is multiplied by the
+near-field boost (default `2.6`). Calibrate once: `/spider debug on`, walk
+from far to close at a spider, read the `SBG| near:` line, then
+`/spider near <N>` (default `0` = off).
+
+**Known limitation:** when the camera is very close, the client clamps the
+nameplate itself (edge/stacking), the cover follows the plate, and no
+UI-layer addon can reposition the plate on this client.
 `/spider` reports `limited=true` when a checked value/frame is inaccessible,
 and `paused=true` after repeated failures. `/spider enable` explicitly retries
 automatic covers. See [docs/TRACKING-ONLY.md](docs/TRACKING-ONLY.md) for controls
@@ -99,6 +114,7 @@ review and Classic filtering rules are in [docs/DATA-SOURCES.md](docs/DATA-SOURC
 | `/spider arrange [on\|off]` | drag mode: covers take the mouse so you can move them; never survives a relog |
 | `/spider grow [N]` | how much bigger than the nameplate a cover is (`0.2`–`6`, default `1.6`) |
 | `/spider drop [N]` | how far below the nameplate it sits (`0`–`4`, default `0.5` — calibrated in game 2026-10-16) |
+| `/spider near [N]` | near-field boost: plate apparent width (`UI` px) at/above which the tracked cover gets the ×`2.6` boost (`0`–`1000`, default `0` = off) |
 | `/spider size [N]` | fixed cover size in UI units (`16`–`512`) for manual shields and unavailable-geometry fallback |
 | `/spider name <name>` | "cover this one too": add an **exact** creature name (spaces allowed) |
 | `/spider names` | list the names you added |
