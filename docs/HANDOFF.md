@@ -1,21 +1,199 @@
 # HANDOFF — resume here (fresh session)
 
-Last updated: **2026-10-15 (c)**, after the second in-game M3 round
-(probe battery P1–P6 / NP1–NP2 run; both open issues resolved; fixes
-SBG13 + SBG14 shipped in **v0.2.2** — **next session starts at §Resume
-(round 2)**). A new agent session should start with this file.
+Last updated: **2026-10-16**, after implementing **M3.5 auto-track** and the
+owner's curated **spider database**, both shipped in **v0.2.3** (offline suite
+**144 checks, ALL PASS**; installed and sync-verified). **A new agent session
+starts at §Resume (round 4) below** — that section is the in-game verification
+protocol for the build that is sitting in `AddOns/` right now.
 
 ## One-line status
 
-**M1, M2, M3 implementation DONE.** Open issue A is **closed** (new build
-confirmed, persistence works) and open issue B is **fixed** (SBG14: the
-player guard rejected every spider). A third bug surfaced while
-interpreting the data and is also fixed (SBG13: cleared cover state was
-forgotten, default parks resurrected over it). What remains for M3
-sign-off is one in-game round (steps 4–7 of the protocol), and the
-**owner's real goal — automatic, mouseover-free covers on visible spiders
-(M3.5) — is blocked on one question: a legal screen position for each
-visible spider.** §Resume (round 2) has the probe battery that answers it.
+**M1, M2, M3 implemented and in-game verified; M3.5 auto-track IMPLEMENTED and
+awaiting its first in-game round.** The blocker from round 3 is **gone**: probe
+N7 proved `SetPoint` **to** a nameplate is legal even though measuring a plate
+is not (SBG15), so a cover anchored to a plate is moved and scaled **by the
+client** — no protected-frame access, no taint workaround, nothing in the game
+modified. Covers now appear, follow and resize as the player walks up on
+spiders, with no targeting and no mouseover.
+
+Also landed this round: the owner's curated ID/name database (125 creature IDs
+with their home zones, 14 name fragments) as the **primary** detection signal,
+and the selftest line 1 fix (it printed `Lua Lua 5.1`).
+
+**Owner constraint (restated 2026-10-15, NON-NEGOTIABLE):** the game must
+stay playable; covers are **UI overlay only**. Never modify unit models,
+names, combat behaviour, game files, or the client's own frames — the owner
+counts that as game tampering / ban risk. Read-only public API queries
+(`UnitName`, `UnitCreatureFamily`, `GetNamePlateAtPosition`, …) and our own
+frames are in scope; taint-workarounds that touch Blizzard frames are not.
+
+## Resume (round 4) — verify M3.5 (v0.2.3) in game
+
+### What the build does now
+
+| Mode | Trigger | Behaviour |
+| :-- | :-- | :-- |
+| **auto-track** (default, `autoTrack=true`) | every tick, scan `nameplate1..40` | each visible spider gets a cover **anchored to its nameplate** (`CENTER` → `CENTER`, offset `0, -coverSize*drop`); the client moves/scales it, we never measure it |
+| **sticky hover** (fallback, `/spider auto off`) | `mouseover` poll | the M3 behaviour: cover follows the cursor, sticks on leave, **one cover per creature** (new: `hoverByKey`, fixes the duplicate-cover report) |
+| **arrange** (`/spider arrange on`) | dispatch before both | nothing tracks, nothing allocates, every cover takes the mouse so it can be dragged; forced **off** at login so covers never eat clicks at start |
+
+Sizing / life-cycle rules: `size = plate apparent width × trackScale`
+(apparent = `GetWidth() × plate.GetEffectiveScale() ÷ UIParent` scale, both
+read-only getters that SBG/N5 proved work on plates), clamped 16–512;
+`Resize`/`SetPoint` are skipped when the change is under 1 UI unit; a cover
+survives `trackRelease` (0.5 s) without its plate so token recycling cannot
+strobe it.
+
+Three invariants that the whole design rests on (all measured in game, all
+enforced in code, all covered by the offline suite):
+
+1. **Anchored slots are never measured.** `GetPoint` on a frame anchored to a
+   plate throws `Can't measure restricted regions` (SBG15), so `SyncDrags` and
+   `Save` skip `slot.anchored`.
+2. **Anchored covers are never persisted.** Their position belongs to a spider
+   that will not exist next session. Parked discs still persist per character.
+3. **Covers are click-through** unless arrange mode is on.
+
+### Bug found and fixed while writing the suite (SBG16)
+
+Pool **indices are recycled**, so keying `SBeGone.track` on "is this index
+allocated" let a stale tracking entry **adopt a sticky hover cover** and anchor
+somebody else's disc to a nameplate. Fixed with an identity check — an entry is
+adopted only when the slot is allocated **and** `Cover.KindOf(slot) == "track"`
+**and** the reverse map `SBeGone.trackSlots[slot]` names the same token — plus a
+`Cover.onEvict` hook so a cover that is sacrificed for pool space drops its
+tracking entry immediately. The same identity rule now guards the **sticky
+hover** map as well (`KindOf(reuse) ~= "hover"` → allocate a fresh cover).
+Regression tests: `track: a recycled index is never adopted`, `track: eviction
+drops entries instead of leaving strays`, `hover: a stale sticky entry never
+adopts a recycled index owned by tracking`.
+
+### Bug found and fixed by the suite (SBG17) — eviction corrupted persistence
+
+Replacing FIFO eviction with `pickEvict` left the old `table.remove(C.queue, 1)`
+line in the eviction branch, so every eviction removed the **wrong** entry from
+`Cover.queue` — and `Cover.Save` / `Cover.Restore` iterate that queue. Effect: in
+a heavy spider group (pool exhausted) a **parked shield would have disappeared at
+the next relog**. Caught by the new `queue: eviction keeps the allocation queue
+exactly consistent` test and confirmed by mutation (re-adding the line fails it
+with `queue length 21 ~= allocated 24`). Hardened in the same pass: `C.Unanchor`
+re-anchors a coordinate-less (formerly tracked) frame to the screen centre rather
+than leaving it point-less and invisible, and a refused `SetPoint` now releases
+the cover and switches auto-track off after 20 refusals instead of churning the
+pool 10x/second.
+
+### Probe battery M1–M8 (all lines ≤255 chars; `/run` = `/runscript`)
+
+Stand where 2–3 spiders are visible with nameplates on. The suite cannot check
+what only eyes can: whether a disc is actually **over the model**, and whether
+the ground under a disc is still clickable.
+
+* **M1** — is the new build running, and is the Lua label sane?
+* **M2** — the important one for the database: does `UnitCreatureID` answer for
+  **nameplate** tokens (it does for `mouseover`)? `db=true` means the curated ID
+  list is doing its work on plates. If `id=nil`, ID matching only works on
+  mouseover and plates fall back to creature family (N1 proved family works on
+  plates) — still correct, less precise.
+* **M3** — is the DB loaded and does the predicate agree with what you see?
+* **M4** — tracking state and error counter after walking around.
+* **M5** — per-cover geometry: sizes should differ between a near and a far
+  spider (that is the dynamic resize), and every tracked cover should print a
+  plate name.
+* **M6** — `Save()` while tracking must write **only** parked discs
+  (`saved=` should equal your park count, not count the anchored covers).
+* **M7** — zone API existence, for the planned `/spider where` (zone hints from
+  the DB's zone annotations).
+* **M8** — click-through proof: `mouseEnabled=0/24` normally, `24/24` in
+  arrange mode.
+
+```ruby
+# M1 — selftest (also: does line 1 now read "Lua 5.1", not "Lua Lua 5.1"?)
+/spider
+```
+```ruby
+# M2 — creature ID on nameplate tokens (DB route works on plates?)
+/run for i=1,8 do local t="nameplate"..i if UnitIsVisible(t) then local id=UnitCreatureID(t) print("SBG4| np"..i.." "..tostring(UnitName(t)).." id="..tostring(id).." db="..tostring(SBeGone.DB.ids[id])) end end
+```
+```ruby
+# M3 — DB loaded + predicate per visible plate
+/run local n=0 for _ in pairs(SBeGone.DB.ids) do n=n+1 end print("SBG4| dbIds="..n.." pats="..#SBeGone.DB.patterns.." auto="..tostring(SBeGoneSettings.autoTrack).." grow="..tostring(SBeGoneSettings.trackScale).." drop="..tostring(SBeGoneSettings.drop))
+```
+```ruby
+# M4 — tracking state after walking around spiders
+/run local n=0 for k,v in pairs(SBeGone.track) do n=n+1 end print("SBG4| tracked="..n.." errs="..tostring(SBeGone.tickErrors).." shown="..SBeGone.Cover.ShownCount().." char="..tostring(SBeGone.char))
+```
+```ruby
+# M5 — per-cover geometry: near spider vs far spider should differ in w
+/run for i=1,SBeGone.Cover.MAX do local s=SBeGone.Cover.pool[i] if s.allocated and s.anchored then print("SBG4| slot"..i.." w="..tostring(s.w).." drop="..tostring(s.anchoredDrop).." plate="..tostring(s.anchoredPlate and s.anchoredPlate:GetName())) end end
+```
+```ruby
+# M6 — persistence while tracking: anchored covers must NOT be saved
+/run SBeGone.Cover.Save() local c=SBeGoneSettings.covers[SBeGone.char] local l=(c and (c.list or c)) or {} local a=0 for i=1,SBeGone.Cover.MAX do if SBeGone.Cover.pool[i].anchored then a=a+1 end end print("SBG4| anchored="..a.." saved="..#l)
+```
+```ruby
+# M7 — zone APIs (needed for the planned /spider where zone hints)
+/run print("SBG4| zone="..tostring(type(GetZoneText)).." sub="..tostring(type(GetSubZoneText)).." mini="..tostring(type(GetMinimapZoneText)).." cnpcn="..tostring(type(C_NamePlate and C_NamePlate.GetNamePlateForUnit)))
+```
+```ruby
+# M8 — click-through (0/24 expected outside arrange mode)
+/run local n=0 for i=1,SBeGone.Cover.MAX do local f=SBeGone.Cover.pool[i].frame local ok,v=pcall(f.GetMouseEnabled,f) if ok and v then n=n+1 end end print("SBG4| mouseEnabled="..n.."/"..SBeGone.Cover.MAX.." arrange="..tostring(SBeGoneSettings.arrange))
+```
+
+### Manual checklist (the part no probe can do)
+
+1. Walk toward a spider **without targeting or hovering** → a cover appears over
+   the model and **follows it**, growing as you close in. Tune with
+   `/spider grow 2` and `/spider drop 1.2`; if the disc floats off the model,
+   that tuning is the fix, not the anchor.
+2. Walk away / spider dies → cover disappears within about a second
+   (`/spider release` cleans up everything that is not a parked disc).
+3. Run, click and target **through** a disc — the ground under it must still
+   work (M8 must read `0/24`).
+4. `/spider parks 4`, relog → the 4 discs come back, tracked covers do not.
+5. `/spider arrange on` → discs can be dragged; `arrange off` → click-through
+   again.
+6. If a spider is **not** covered: `mouseover` it, then
+   `/spider name <exact name>` — it is covered from that moment and saved for
+   the character (`/spider names`, `/spider forget <name>`). Note the name in
+   your report anyway: the real fix is usually adding its creature ID to
+   `SpiderDB.lua` (the name route is the safety net, not the design).
+7. `/spider debug on` prints nothing during normal play (it is a hook for the
+   next bug, not a chatty mode).
+
+### Report (AGENTS.md §4)
+
+* **Risk assessment.**
+  * *Anchored cover is measured by some code path we missed* → would throw a
+    taint error in chat, visibly, not corrupt anything. Both known readers
+    (`SyncDrags`, `Save`) skip anchored slots; the suite stubs plates so that
+    **any** measurement attempt fails the build (SBG15 stub throws).
+  * *Pool starvation with a large spider group* (more than 24 visible spiders):
+    `pickEvict(prefer)` sacrifices another tracked cover before touching a
+    parked disc, so the owner's hand-placed shields are safe; worst case one
+    spider is uncovered.
+  * *Plate token churn* (nameplate3 becoming another spider mid-scan) → a cover
+    can be anchored to the wrong model for at most one tick (100 ms) before the
+    identity check re-binds it.
+  * *Detection over-reach*: the DB deliberately includes bug-model creatures the
+    family table files as Beast (15475 Beetle, 16698 Corpse Scarab). That is the
+    owner's phobia list, not our guess.
+* **Confidence.** High on detection (ID + family + fragments, all confirmed
+  against live data), high on playability (mouse disabled by default, arrange
+  forced off at login), **medium on the visual result** — position correctness
+  can only be seen, and `trackScale`/`drop` defaults (1.6 / 0.9) are derived
+  from "models hang below their nameplate", not measured. First in-game round
+  will tell.
+* **Path to improvement.** (a) If M2 shows `id` on plates, keep ID-first; if
+  not, add a name-first path for plates. (b) If M7 confirms `GetZoneText`,
+  build `/spider where` from the DB's zone annotations (zone-in hint).
+  (c) Replace the fixed `drop` with a per-model table once the owner reports
+  which models sit oddly. (d) M4 milestones: blind mode, panic hotkey,
+  target/focus cover.
+* **Intent adherence.** The owner's ask — "as I walk toward spiders it'll
+  automatically check for the spider and cover it, and the cover moves and
+  resizes with it" — is implemented end to end, and the no-tampering boundary
+  is held: our own frames, read-only unit queries, and the client's own
+  projection. Nothing else.
 
 **Owner constraint (restated 2026-10-15, NON-NEGOTIABLE):** the game must
 stay playable; covers are **UI overlay only**. Never modify unit models,
@@ -561,29 +739,49 @@ the §12 probe set on the release client if the interface number changes
 - Art regenerates via `python3 tools/make_art.py` (stdlib only) — no binary
   art is ever hand-edited.
 
+- **2026-10-16:** Probe round 3 interpreted (**N7 decisive**: `SetPoint` *to* a
+  plate is legal even though measuring one is not; `GetWidth` +
+  `GetEffectiveScale` work, `GetRect`/`GetCenter`/`GetPoint` throw SBG15).
+  **M3.5 auto-track implemented** — anchor-to-plate covers that the client moves
+  and scales, `trackScale`/`drop` sizing, `trackRelease` anti-strobe grace,
+  preferential eviction (`pickEvict`) so a wall of spiders cannot eat the
+  owner's parked discs, `/spider auto|arrange|release|grow|drop|size|debug`,
+  one sticky cover per creature (`hoverByKey`, fixes the duplicate-cover
+  report), covers click-through unless arranging, `arrange` never persisted.
+  Owner supplied a curated spider list (`~/Downloads/SpiderNPCs.lua`); shipped
+  as **`SpiderDB.lua`** — 125 creature IDs with home zones + 14 fragments,
+  consulted **before** creature family (catches "Moss Stalker", "Crypt Horror",
+  "Krethis Shadowspinner" and the two deliberately-listed bug-model IDs);
+  `settings.namePatterns` is now **additive** so the owner's stale
+  SavedVariables entry cannot pin the old two-fragment list; fragments match
+  case-insensitively. Fixed the `Lua Lua 5.1` selftest label (SBG2:
+  `GetBuildInfo` returns build/buildNo/date/interface, not major/minor/patch).
+  Fixed **SBG16** (recycled pool index adopted a sticky hover cover) with the
+  `KindOf` + `trackSlots` identity check and the `Cover.onEvict` hook, applied to
+  the sticky-hover map too. Added `/spider name X` / `names` / `forget X` so an
+  uncovered spider can be fixed from the field. Fixed **SBG17** (eviction removed
+  the wrong `Cover.queue` entry — parked shields would have been lost at relog in
+  a heavy spider group), found by the new queue-consistency test and confirmed by
+  mutation. Suite **144 checks ALL PASS**, restricted-region stubs make any
+  plate-measurement attempt fail the build. Bumped **0.2.3**, installed,
+  `diff -r` clean.
+  **Next: the M1–M8 round in §Resume (round 4).**
+
 ## Next session, in order
 
-1. User `/reload`s the installed **v0.2.2** and reports the single
-   `SBG| restore: settingsAtScriptLoad=? firstRun=? saved=? parks=?` line
-   (decides the SavedVariables load order for good) plus normal M3 behaviour:
-   hover a spider → disc appears and sticks; `/spider clear` → gone and stays
-   gone across `/reload`; `/spider parks 0` → no parked discs; `/spider parks 8`
-   → row of 8; `/spider off|on` behaves.
-2. User runs probe round 3 (**N1–N8** in §Resume round 2). Paste every
-   `SBG2|` line.
-3. Interpret with the N-decision tree → pick the position source:
-   anchor-to-plate (N7) > hit-test scan (N3) > direct geometry (N5) > dead end.
-4. Implement **M3.5 auto-cover** on that source: per-nameplate-unit slots,
-   tick enumeration of `nameplate1..N` filtered by `U.IsSpider`, dynamic
-   position each tick, dynamic size from the distance proxy (plate extent if
-   available, else `GetCameraZoom`), **mouse-through**, `/spider arrange` for
-   dragging, release policy per the owner answer above. Reuse the pool,
-   persistence and soft clamp as-is.
-5. Keep `lua5.1 tools/test_core.lua` ALL PASS (add nameplate-unit stubs and a
-   fake restricted frame so the blocked paths are covered offline), reinstall,
-   `diff -r`, commit + push.
-6. If every position source is dead: report it and ship mouseover-sticky as the
-   product (owner's stated fallback) — say so explicitly, do not fake it.
-7. M4: blind mode + panic hotkey (`Bindings.xml` route) + frame cover
-   (`TargetFrame`/`FocusFrame` only — those frames are ours to read, unlike
-   nameplates).
+1. User `/reload`s (or restarts) the installed **v0.2.3** and runs the
+   **M1–M8** battery in §Resume (round 4), pasting every `SBG4|` line, plus the
+   manual checklist (does the disc sit on the model, is the ground still
+   clickable).
+2. Interpret: M2 decides whether the ID database is live on nameplates; the
+   manual item "disc floats off the model" is a `grow`/`drop` tuning answer, not
+   an anchor bug — record the values that worked and consider making them
+   defaults.
+3. If tracking misbehaves, `/spider debug on` and re-run; `errs=` in M4 is the
+   first number to look at (the driver disables auto-track after 4 tick errors
+   rather than spamming chat).
+4. Then M4 milestones: **blind mode**, **panic hotkey** (`Bindings.xml` route),
+   **frame cover** (`TargetFrame`/`FocusFrame` only — ours to read, unlike
+   nameplates), and `/spider where` zone hints from the DB's zone annotations
+   (gated on M7 showing `GetZoneText`).
+

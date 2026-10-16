@@ -5,8 +5,41 @@ SBeGone = SBeGone or {}
 local U = {}
 SBeGone.Units = U
 
--- Fallback name patterns (settings.namePatterns overrides at runtime).
-U.NAME_PATTERNS = { "Spider", "Gloomweaver" }
+-- Fragments carried over from the pre-database releases, kept as a UNION with
+-- the owner's list so upgrading never loses coverage of something an older
+-- build covered (fail-open: covering a non-spider costs a disc, missing a
+-- spider costs the whole point of the addon). "Spider" itself no longer needs
+-- listing - the DB has "spider" and matching is case-insensitive now.
+U.NAME_PATTERNS = { "Gloomweaver" }
+
+-- settings.namePatterns is ADDITIVE, never a replacement: the owner's
+-- SavedVariables already holds the old two-entry list and settings migration
+-- deliberately keeps valid user data, so treating it as the whole list would
+-- silently drop "webwood", "skitterer", "nerub" and friends.
+-- Cached because IsSpider runs ~10 Hz over every visible plate (Performance):
+-- rebuilt only when the user list changes length.
+local patCache, patStamp
+local function namePatterns()
+	local s = SBeGoneSettings or {}
+	local user = (type(s.namePatterns) == "table") and s.namePatterns or {}
+	if patCache and patStamp == #user then return patCache end
+	local out, seen = {}, {}
+	local function add(frag)
+		if type(frag) ~= "string" or frag == "" then return end
+		frag = frag:lower()
+		if not seen[frag] then
+			seen[frag] = true
+			out[#out + 1] = frag
+		end
+	end
+	-- Owner's curated fragments first, then the pre-database ones, then
+	-- whatever the user added (an absent/empty DB still matches "Gloomweaver").
+	for _, pat in ipairs((SBeGone.DB and SBeGone.DB.patterns) or {}) do add(pat) end
+	for _, pat in ipairs(U.NAME_PATTERNS) do add(pat) end
+	for _, pat in ipairs(user) do add(pat) end
+	patCache, patStamp = out, #user
+	return out
+end
 
 -- Spider predicate (PLAN §3.1). `unit` is a tracked unit token.
 function U.IsSpider(unit)
@@ -33,8 +66,24 @@ function U.IsSpider(unit)
 		end
 	end
 
-	-- 2. Primary: creature family "Spider" (id 3) — confirmed in-client (SBG4).
+	-- 2. Curated creature-ID database (owner data, SpiderDB.lua). Checked
+	--    FIRST: it is exact, it catches names that give nothing away ("Moss
+	--    Stalker", "Crypt Horror", "Krethis Shadowspinner") and bug-model
+	--    creatures the family table files outside Spider (15475 Beetle,
+	--    16698 Corpse Scarab). UnitCreatureID is confirmed on mouseover
+	--    (in-game 2026-10-15: id=1504); on nameplate tokens it is probed in
+	--    the next round, and a nil here simply falls through to family.
 	local isSpider = false
+	local db = SBeGone.DB and SBeGone.DB.ids
+	if db and UnitCreatureID then
+		local id = UnitCreatureID(unit)
+		if type(id) == "number" and db[id] == true then
+			isSpider = true
+		end
+	end
+
+	-- 3. Primary for unlisted units: creature family "Spider" (id 3) —
+	--    confirmed in-client (SBG4) and on nameplate tokens (NP1, 2026-10-15).
 	if UnitCreatureFamily then
 		local _, famId = UnitCreatureFamily(unit)
 		if famId == 3 then
@@ -42,8 +91,11 @@ function U.IsSpider(unit)
 		end
 	end
 
-	-- 3. Fallback: name patterns + user extraNames (units reporting no family).
-	--    plain find (no Lua patterns) — extraNames is user data.
+	-- 4. Fallback: name fragments + user extraNames (units reporting no family
+	--    and no id). Matching is case-INsensitive (the curated fragments are
+	--    lowercase, unit names are not) and uses plain find, never Lua pattern
+	--    matching - these lists contain user data, "%", "-" and "(" are common
+	--    in NPC names.
 	if not isSpider then
 		local name
 		if UnitName then
@@ -52,21 +104,16 @@ function U.IsSpider(unit)
 			name = GetUnitName(unit)
 		end
 		if name then
-			local pats
-			if type(s.namePatterns) == "table" and #s.namePatterns > 0 then
-				pats = s.namePatterns
-			else
-				pats = U.NAME_PATTERNS
-			end
-			for _, pat in ipairs(pats) do
-				if type(pat) == "string" and name:find(pat, 1, true) then
+			local lower = name:lower()
+			for _, pat in ipairs(namePatterns()) do
+				if lower:find(pat, 1, true) then
 					isSpider = true
 					break
 				end
 			end
 			if not isSpider then
 				for _, extra in ipairs(s.extraNames or {}) do
-					if name == extra then
+					if type(extra) == "string" and lower == extra:lower() then
 						isSpider = true
 						break
 					end
@@ -79,7 +126,7 @@ function U.IsSpider(unit)
 		return false
 	end
 
-	-- 4. Level window.
+	-- 5. Level window.
 	local lvl = (UnitLevel and UnitLevel(unit)) or 0
 	local minL = (type(s.minLevel) == "number") and s.minLevel or 1
 	local maxL = (type(s.maxLevel) == "number") and s.maxLevel or 99
@@ -87,7 +134,7 @@ function U.IsSpider(unit)
 		return false
 	end
 
-	-- 5. Optional hostile-only gate. UnitCanAttack is TWO-ARG on this client
+	-- 6. Optional hostile-only gate. UnitCanAttack is TWO-ARG on this client
 	--    (SBG5): UnitCanAttack("player", unit) = "can I attack it".
 	if s.requireHostile then
 		if not (UnitCanAttack and UnitCanAttack("player", unit)) then

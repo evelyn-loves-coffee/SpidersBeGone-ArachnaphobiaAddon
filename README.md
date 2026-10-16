@@ -4,15 +4,21 @@ Addon for **World of Warcraft Forever** (classic 1.x-line client, v1.60.1) that
 covers spider models with a screen-anchored UI element. UI-layer only: no model
 swaps, no game-file modification.
 
-**Status:** M3 in verification (v0.2.2). In game today: parked shields render,
-`mouseover` detection works, drag positions persist, and the two remaining
-M3 bugs are fixed — the spider predicate was rejecting every spider (NPC
-"class" is reported as the unit's name on this client), and cleared cover state
-was being forgotten on reload. The next milestone, **M3.5 — automatic covers on
-visible spiders while you walk, no mouseover** — is blocked on one question:
-finding a *legal* screen position for each visible spider. This addon only ever
-draws its own overlay frames; it does not touch unit models, game files, or the
-client's protected frames (nameplate geometry is deliberately left alone).
+**Status:** M3 verified in game; **M3.5 auto-track implemented, awaiting its
+first in-game round (v0.2.3)**. Walk up to a spider and a cover appears over it,
+**follows it and grows as you get closer**, with no targeting and no mouseover —
+the cover is *anchored to the spider's nameplate*, so the client does the moving
+and scaling for us. `mouseover`-sticky covers (v0.2.2) stay as the fallback
+mode (`/spider auto off`).
+
+**Safety boundary (owner rule).** This addon draws its own overlay frames and
+reads public unit information. It never modifies unit models, names, combat
+behaviour, game files, or the client's own frames, and it does not use taint
+workarounds. Nameplate *geometry* is client-protected and is deliberately never
+measured — anchoring to a plate is allowed, reading a plate's coordinates is
+not, and the code is written around that fact. Covers are **click-through**: you
+can run, click and target straight through them (`/spider arrange` is the only
+mode that takes the mouse, for lining shields up).
 
 See [docs/HANDOFF.md](docs/HANDOFF.md) to resume from a fresh session,
 [docs/PLAN.md](docs/PLAN.md) for the design and the confirmed API surface of the
@@ -29,14 +35,47 @@ log in or `/reload`.
 
 | Command | Effect |
 | :-- | :-- |
-| `/spider` | selftest: addon version, client build, Lua version, enabled, character, driver, sticky, pool/saved counts |
-| `/spider on` / `off` / `toggle` | enable / disable (covers stay put, hidden) |
+| `/spider` | selftest: version, build, Lua, enabled, character, auto-track state, covers shown / saved, size |
+| `/spider on` / `off` / `toggle` | enable / disable the whole addon |
+| `/spider release` | hide all auto-tracked and sticky covers; keeps your parked shields |
 | `/spider clear` | remove all covers and forget this character's saved layout |
 | `/spider parks N` | set the number of pre-parked shields (`0` removes them) |
+| `/spider auto [on\|off]` | automatic covers on visible spiders (on by default) |
+| `/spider arrange [on\|off]` | drag mode: covers take the mouse so you can move them; never survives a relog |
+| `/spider grow [N]` | how much bigger than the nameplate a cover is (`0.2`–`6`, default `1.6`) |
+| `/spider drop [N]` | how far below the nameplate it sits (`0`–`4`, default `0.9` — models hang below their plate) |
+| `/spider size [N]` | fixed cover size in UI units (`16`–`512`) for sticky and parked shields |
+| `/spider name <name>` | "cover this one too": add an **exact** creature name (spaces allowed) |
+| `/spider names` | list the names you added |
+| `/spider forget <name>` | remove one you added |
+| `/spider debug [on\|off]` | verbose decisions for bug reports (off by default) |
 | `/spider help` | usage |
 
-Covers stick where the spider was (sticky hover shield), survive `/reload` and
-relog per character, and cannot be dragged off-screen.
+**What is remembered per character:** your parked shields and their sizes.
+Auto-tracked covers are *not* saved — they belong to a spider that will not
+exist next session. Sticky covers still persist. Nothing can be dragged
+off-screen.
+
+### How a spider is recognised
+
+1. **Creature ID** against a curated database (`SpidersBeGone/SpiderDB.lua`,
+   125 spider and spider-looking creature IDs compiled by the owner, with their
+   home zones) — exact, and the only thing that catches names that give nothing
+   away ("Moss Stalker", "Crypt Horror", "Krethis Shadowspinner") or the
+   bug-model creatures the client files outside the Spider family.
+2. **Creature family** `Spider` (id 3) — covers every spider that is not in the
+   database.
+3. **Name fragments** (`spider`, `weaver`, `widow`, `skitter`, `tarantula`, …,
+   case-insensitive) — last resort for units that report neither.
+
+Spotted a spider that none of the three caught? `/spider name <exact name>` adds
+it permanently (per character, saved in SavedVariables); `/spider names` and
+`/spider forget <name>` manage the list. Extra fragments can be added in
+`SBeGoneSettings.namePatterns` — those are *added to* the built-in set, never a
+replacement.
+
+Players, pets and totems are never covered; the level window
+(`minLevel`/`maxLevel`) and `requireHostile` still apply.
 
 ## Developer notes
 

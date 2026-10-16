@@ -42,13 +42,38 @@ local function makeFrame()
 	local f = CreateFrame("Frame")
 	f:SetParent(UIParent)
 	f:SetFrameStrata("HIGH")
-	f:EnableMouse(true)
+	-- Playability (owner rule, 2026-10-15): covers must NOT eat clicks by
+	-- default — a mouse-enabled disc over the ground blocks moving/targeting
+	-- there. Mouse is only enabled in /spider arrange mode (dragging).
+	f:EnableMouse(C.IsInteractive())
 	f:SetMovable(true)
 	local base = makeTexture(f)
 	local art = makeTexture(f)
 	if art then art:SetAllPoints() end
 	f:Hide()
 	return f, base, art
+end
+
+-- Arrange mode: covers accept the mouse so they can be dragged and lined up.
+-- Everything else (auto-track and sticky covers) is click-through.
+function C.IsInteractive()
+	local s = SBeGoneSettings
+	return (type(s) == "table" and s.arrange) and true or false
+end
+
+function C.ApplyInteractivity()
+	if not C.inited then return end
+	local on = C.IsInteractive()
+	for i = 1, C.MAX do
+		local slot = C.pool[i]
+		slot.frame:EnableMouse(on)
+		-- An anchored frame cannot be dragged (and measuring it throws a taint
+		-- error: it transitively touches the restricted plate), so arranging
+		-- means letting go of every plate.
+		if on and slot.anchored then
+			C.Unanchor(i)
+		end
+	end
 end
 
 function C.Init()
@@ -59,7 +84,11 @@ function C.Init()
 	C.free = {}
 	for i = 1, C.MAX do
 		local f, base, art = makeFrame()
-		C.pool[i] = { frame = f, base = base, art = art, kind = "park" }
+		C.pool[i] = {
+			frame = f, base = base, art = art, kind = "park",
+			anchored = false, anchoredPlate = nil, anchoredDrop = 0,
+			miss = 0,
+		}
 		C.free[#C.free + 1] = i
 	end
 	C.Clamp()
@@ -124,6 +153,8 @@ end
 -- Epsilon: skip the SetPoint when the cursor moved < 1 UI pixel (PLAN §3.3).
 function C.Place(i, x, y)
 	local slot = C.pool[i]
+	if slot.anchored then return end -- the client owns this frame's position
+	if type(x) ~= "number" or type(y) ~= "number" then return end
 	if slot.frame:IsShown() and type(slot.x) == "number"
 		and math.abs(slot.x - x) < 1 and math.abs(slot.y - y) < 1 then
 		return
@@ -147,6 +178,13 @@ end
 
 function C.Resize(i, w, h)
 	local slot = C.pool[i]
+	-- Epsilon: auto-track re-sizes every tick from the plate's apparent width;
+	-- skip the work (and the base-texture re-anchoring) when it barely moved.
+	if type(w) == "number" and type(h) == "number"
+		and type(slot.w) == "number" and type(slot.h) == "number"
+		and math.abs(slot.w - w) < 1 and math.abs(slot.h - h) < 1 then
+		return
+	end
 	slot.w, slot.h = w, h
 	setSize(slot.frame, w, h)
 	if slot.base then
@@ -156,28 +194,153 @@ function C.Resize(i, w, h)
 	end
 end
 
--- Take a slot from the pool (free list first, else evict the oldest = FIFO).
-function C.Allocate(kind, x, y)
+-- Let go of a plate. Anchoring is the whole point of tracking, but the client
+-- then refuses to measure our frame (in-game 2026-10-15: our own
+-- Frame:GetPoint() reported "Can't measure restricted regions" once it was
+-- anchored to a nameplate). So while anchored we never call GetPoint on the
+-- frame — see C.SyncDrags and C.Save, which both skip anchored slots.
+function C.Unanchor(i)
+	local slot = C.pool[i]
+	if not slot then return end
+	if slot.frame.ClearAllPoints then
+		pcall(slot.frame.ClearAllPoints, slot.frame)
+	end
+	slot.anchored = false
+	slot.anchoredPlate = nil
+	slot.anchoredDrop = 0
+	-- Anchor state and explicit state are mutually exclusive: put the frame
+	-- back under our own control at its last known free position.
+	if type(slot.x) == "number" and type(slot.y) == "number" then
+		slot.frame:SetPoint("CENTER", UIParent, "BOTTOMLEFT", slot.x, slot.y)
+	elseif slot.frame.SetPoint then
+		-- An anchored cover has NO coordinates of its own (we never measure it),
+		-- so put it somewhere findable instead of leaving it point-less: a frame
+		-- with no anchor renders nowhere, which would make a released cover
+		-- vanish mid-arrange. Centring needs no measurement.
+		pcall(slot.frame.SetPoint, slot.frame, "CENTER", UIParent, "CENTER")
+	end
+end
+
+-- Anchor a cover to a nameplate frame, centred `dropY` UI units BELOW the
+-- plate (models hang below their nameplate). Offsets are ours, so nothing is
+-- measured: the client re-computes our position every layout pass, which is
+-- exactly the dynamic movement we cannot derive ourselves. Proven present
+-- in-game 2026-10-15: SetPoint to a nameplate does NOT error (anchor=true).
+function C.PlaceTracked(i, plate, dropY)
+	local slot = C.pool[i]
+	if not slot or not plate or not slot.frame.SetPoint then return false end
+	dropY = dropY or 0
+	-- Re-anchor only when the target changed or the offset moved >= 1 UI unit
+	-- (same epsilon policy as C.Place) — 10 Hz x 24 slots stays trivial.
+	if slot.anchored and slot.anchoredPlate == plate
+		and math.abs((slot.anchoredDrop or 0) - dropY) < 1 then
+		if not slot.frame:IsShown() then slot.frame:Show() end
+		return true
+	end
+	if slot.frame.ClearAllPoints then
+		pcall(slot.frame.ClearAllPoints, slot.frame)
+	end
+	local ok = pcall(slot.frame.SetPoint, slot.frame, "CENTER", plate, "CENTER", 0, -dropY)
+	if not ok then
+		return false
+	end
+	slot.anchored = true
+	slot.anchoredPlate = plate
+	slot.anchoredDrop = dropY
+	slot.x, slot.y = nil, nil
+	if not slot.frame:IsShown() then slot.frame:Show() end
+	return true
+end
+
+-- Eviction: free list first; otherwise sacrifice a slot of `prefer` kind
+-- (so a screen full of spiders does not eat the owner's parked discs),
+-- falling back to plain FIFO.
+local function pickEvict(prefer)
+	local oldestAny, oldestPrefer = nil, nil
+	for i = 1, C.MAX do
+		local slot = C.pool[i]
+		if slot.allocated then
+			if prefer and slot.kind == prefer then
+				if not oldestPrefer or slot.seq < C.pool[oldestPrefer].seq then
+					oldestPrefer = i
+				end
+			end
+			if not oldestAny or slot.seq < C.pool[oldestAny].seq then
+				oldestAny = i
+			end
+		end
+	end
+	return oldestPrefer or oldestAny
+end
+
+-- Take a slot from the pool (free list first, else evict preferentially,
+-- else oldest = FIFO).
+function C.Allocate(kind, x, y, prefer)
 	local i
 	if #C.free > 0 then
 		i = table.remove(C.free)
 	else
-		i = table.remove(C.queue, 1)
+		i = pickEvict(prefer)
+		if not i then return nil end
+		-- Tell whoever owned the sacrificed slot so they can drop their
+		-- bookkeeping (see C.KindOf: indices are recycled).
+		if C.onEvict then
+			local ok, err = pcall(C.onEvict, i)
+			if not ok and SBeGone.debug then
+				print("SBG| onEvict hook error: " .. tostring(err))
+			end
+		end
+		-- Take ONLY the sacrificed slot out of the queue; it is re-appended
+		-- below. (The old FIFO line `table.remove(C.queue, 1)` stayed here after
+		-- pickEvict replaced FIFO and silently dropped an UNRELATED slot from the
+		-- queue - and C.Save/C.Restore iterate the queue, so that slot's owner
+		-- would have lost its cover at the next relog. Caught by the suite test
+		-- "eviction keeps the allocation queue exactly consistent".)
+		for q = #C.queue, 1, -1 do
+			if C.queue[q] == i then table.remove(C.queue, q) break end
+		end
 		C.pool[i].frame:Hide()
 	end
 	local slot = C.pool[i]
 	C.queue[#C.queue + 1] = i
 	slot.kind = kind
+	slot.allocated = true
+	slot.seq = (C.seq or 0) + 1
+	C.seq = slot.seq
+	slot.miss = 0
 	slot.x, slot.y = nil, nil
+	C.Unanchor(i)
 	C.Resize(i, C.Size(), C.Size())
 	C.Place(i, x, y)
 	return i
 end
 
+-- Allocate a cover with no position yet (auto-track anchors it immediately).
+function C.AllocateUnpositioned(kind, prefer)
+	return C.Allocate(kind, nil, nil, prefer)
+end
+
+function C.IsAllocated(i)
+	local slot = C.pool[i]
+	return slot ~= nil and slot.allocated == true
+end
+
+-- Who owns a slot right now ("park" / "hover" / "track"). Callers that key a
+-- map on a slot INDEX must check this before adopting it: indices are recycled,
+-- so a stale index can point at somebody else's cover (found in the M3.5 suite:
+-- a tracking entry adopted a sticky hover cover and anchored it to a plate).
+function C.KindOf(i)
+	local slot = (type(i) == "number") and C.pool[i] or nil
+	return slot and slot.allocated and slot.kind or nil
+end
+
 -- Return a slot to the pool (cover disappears).
 function C.Release(i)
 	local slot = C.pool[i]
+	if not slot then return end
+	C.Unanchor(i)
 	slot.frame:Hide()
+	slot.allocated = false
 	slot.x, slot.y = nil, nil
 	for q = #C.queue, 1, -1 do
 		if C.queue[q] == i then
@@ -200,7 +363,9 @@ function C.ClearAll()
 	C.free = {}
 	for i = 1, C.MAX do
 		local slot = C.pool[i]
+		C.Unanchor(i)
 		slot.frame:Hide()
+		slot.allocated = false
 		slot.x, slot.y = nil, nil
 		C.free[#C.free + 1] = i
 	end
@@ -228,7 +393,11 @@ function C.SyncDrags()
 	local changed = false
 	for i = 1, C.MAX do
 		local slot = C.pool[i]
-		if slot.frame:IsShown() and type(slot.x) == "number" then
+		-- Anchored (tracked) covers are positioned by the client from a
+		-- restricted frame: measuring them throws
+		-- "Action[FrameMeasurement] failed ... restricted regions" (SBG15), so
+		-- they are never polled here.
+		if slot.frame:IsShown() and not slot.anchored and type(slot.x) == "number" then
 			-- GetPoint returns (point, relativeToFrame, relativeToPoint, x, y,
 			-- ...) — the offsets are the 4th and 5th returns (SBG12). Reading
 			-- the 3rd/4th (as before) gives x = "BOTTOMLEFT" (a string), so
@@ -273,7 +442,11 @@ function C.Save()
 	local list = {}
 	for _, i in ipairs(C.queue) do
 		local slot = C.pool[i]
-		if type(slot.x) == "number" and type(slot.y) == "number" then
+		-- Persist only what WE positioned. Auto-track (anchored) covers are
+		-- excluded on purpose: their position belongs to a spider that will not
+		-- exist next session, and an anchored frame cannot be measured anyway.
+		if slot.allocated and not slot.anchored
+			and type(slot.x) == "number" and type(slot.y) == "number" then
 			list[#list + 1] = { x = slot.x, y = slot.y, w = slot.w, h = slot.h, kind = slot.kind }
 		end
 	end
