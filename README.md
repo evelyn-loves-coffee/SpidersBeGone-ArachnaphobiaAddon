@@ -4,9 +4,10 @@ Addon for **World of Warcraft Forever** (classic 1.x-line client, v1.60.1) that
 covers spider models with a nameplate-attached UI element. UI-layer only: no model
 swaps, no game-file modification.
 
-**Status: v0.3.0 — core tracking verified in game 2026-10-16 (Tirisfal);
-cover picker, local custom images and fox artwork added. The packaged
-regression suite passes; the new picker and warning need live validation.**
+**Status: v0.3.1 — core tracking verified in game 2026-10-16 (Tirisfal);
+only automatic nameplate covers remain. The fox, background presets, custom
+images and brief corpse warning are retained. The new build passes offline
+checks; live validation belongs on the partner's test machine.**
 Tracked covers are now **children of the spider's nameplate**, so native
 movement and scale apply to the cover and its offset between polling ticks.
 The public unit-to-nameplate mapper is preferred; a metadata fallback requires
@@ -21,13 +22,13 @@ behaviour, game files, or the client's own frames, and it does not use taint
 workarounds. The addon never reads a plate's screen coordinates. Attachment is
 used only when the client accepts it. Optional width/scale readings are checked
 for accessibility; unavailable readings fall back to configured dimensions.
-Covers are **click-through**: you
-can run, click and target straight through them (`/spider arrange` is the only
-mode that takes the mouse, for lining shields up).
+Covers are **always click-through**: you can run, click and target straight
+through them. They have no input mode, movement handlers or saved positions.
+Only the image picker accepts input when you explicitly open it.
 
 See [docs/HANDOFF.md](docs/HANDOFF.md) to resume from a fresh session,
 [docs/TRACKING-ONLY.md](docs/TRACKING-ONLY.md) for current controls, and
-[docs/PLAN.md](docs/PLAN.md) / [docs/API-VERIFICATION.md](docs/API-VERIFICATION.md)
+[historical design](https://github.com/evelyn-loves-coffee/SpidersBeGone-ArachnaphobiaAddon/blob/main/docs/PLAN.md) / [client-probe records](https://github.com/evelyn-loves-coffee/SpidersBeGone-ArachnaphobiaAddon/blob/main/docs/API-VERIFICATION.md)
 for the historical design and client-probe records.
 
 ## Install
@@ -35,7 +36,7 @@ for the historical design and client-probe records.
 Extract the fixed ZIP and replace the `SpidersBeGone/` folder in your client's
 `Interface/AddOns/` directory, then log in or `/reload`. The `.toc` must be at
 `Interface/AddOns/SpidersBeGone/SpidersBeGone.toc`, without an extra nested
-repository folder. `/spider` should report **v0.3.0**.
+repository folder. `/spider` should report **v0.3.1**.
 
 Choose your cover with **`/spider config`**. The default is the supplied fox
 illustration; alternatives are muted red, blue and sage squircles, plain
@@ -47,7 +48,7 @@ mouseover; the 1.75-second corpse warning is unchanged.
 
 Enable enemy nameplates in the game. The addon starts enabled on a new install;
 `/spider enable` also enables tracking immediately and retries paused coverage.
-`/spider disable` stops tracking and hides every cover, including manual shields.
+`/spider disable` stops tracking and hides every cover.
 No mouseover or separate auto command is needed. Tune coverage with `/spider grow 2`
 and `/spider drop 0.5` as needed.
 
@@ -81,7 +82,7 @@ automatic implementation and its limits.
 `/spider` reports `limited=true` when a checked value/frame is inaccessible,
 and `paused=true` after repeated failures. `/spider enable` explicitly retries
 automatic covers. See [docs/TRACKING-ONLY.md](docs/TRACKING-ONLY.md) for controls
-and upgrade behavior, and [docs/NATIVE-OVERLAYS.md](docs/NATIVE-OVERLAYS.md) for
+and upgrade behavior, and [the native attachment record](https://github.com/evelyn-loves-coffee/SpidersBeGone-ArachnaphobiaAddon/blob/main/docs/NATIVE-OVERLAYS.md) for
 the native attachment implementation.
 
 `/spider disable` also dismisses the corpse warning and clears its observation
@@ -126,20 +127,16 @@ review and Classic filtering rules are in [docs/DATA-SOURCES.md](docs/DATA-SOURC
 
 | Command | Effect |
 | :-- | :-- |
-| `/spider` | diagnostics: version, build, enabled, tracking, covers shown / saved, limited / paused |
+| `/spider` | diagnostics: version, build, enabled, tracking, covers shown, limited / paused |
 | `/spider config` | open the cover picker with preview, presets and custom-image path |
 | `/spider cover <choice>` | select `fox`, `red`, `blue`, `sage`, `charcoal`, or `custom <local .tga path>` |
 | `/spider enable` | enable tracking and retry paused coverage; enabled by default |
 | `/spider disable` | stop tracking and hide every cover; stays disabled after reload |
 | `/spider toggle` | switch between enabled tracking and disabled covers |
-| `/spider release` | release tracked covers; they return on the next scan if enabled; keeps manual shields |
-| `/spider clear` | remove all covers and forget this character's saved layout |
-| `/spider parks N` | set the number of pre-parked shields (`0` removes them) |
-| `/spider arrange [on\|off]` | drag mode: covers take the mouse so you can move them; never survives a relog |
 | `/spider grow [N]` | how much bigger than the nameplate a cover is (`0.2`–`6`, default `1.6`) |
 | `/spider drop [N]` | how far below the nameplate it sits (`0`–`4`, default `0.5` — calibrated in game 2026-10-16) |
 | `/spider near [N]` | near-field boost: plate apparent width (`UI` px) at/above which the tracked cover gets the ×`2.6` boost (`0`–`1000`, default `0` = off) |
-| `/spider size [N]` | fixed cover size in UI units (`16`–`512`) for manual shields and unavailable-geometry fallback |
+| `/spider size [N]` | fallback cover size in UI units (`16`–`512`) when plate geometry is unavailable |
 | `/spider name <name>` | "cover this one too": add an **exact** creature name (spaces allowed) |
 | `/spider names` | list the names you added |
 | `/spider forget <name>` | remove one you added |
@@ -147,15 +144,20 @@ review and Classic filtering rules are in [docs/DATA-SOURCES.md](docs/DATA-SOURC
 | `/spider help` | usage |
 
 `/spider on` and `/spider off` remain compatibility aliases for enable/disable.
-The old `/spider auto` command is retired and only prints migration guidance.
 
-**What is remembered per character:** explicitly parked manual shields and
-their sizes. New installs start with zero manual shields; existing configured
-manual shields are preserved. Tracked covers are rebuilt from live nameplates.
-Upgrades remove old cursor-generated covers and mode settings, including
-`autoTrack=false`, while preserving the overall enabled/disabled preference.
-Manual covers stay hidden while disabled, including after reload. Nothing can
-be dragged off-screen.
+**Upgrade to v0.3.1:** old screen-cover layouts and editing modes are deleted
+for every character, including settings loaded late by the client. The
+selected image, custom path, enabled preference and tracking calibration are
+preserved. Cover positions are never saved; covers are rebuilt from live
+nameplates. The removed layout/reset commands are no longer accepted.
+
+**Primary in-game test machine:** the user's partner's computer
+(`evelyn-loves-coffee`). This development checkout does not establish that
+an update is installed or tested there. Because the reported cursor failure
+survived `/reload`, fully exit the game on that machine before replacing the
+addon folder and testing this upgrade. The previous input failure has not
+been reproduced here, so recovery of an already affected client still needs
+confirmation there.
 
 ### How a spider is recognised
 

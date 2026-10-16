@@ -2,7 +2,7 @@
 
 Tracking is the only automatic detection mode. Visible accessible spider
 nameplates receive click-through covers without targeting or pointer input.
-Manual parked shields remain optional; only their positions are persisted.
+Covers never accept mouse input or store screen positions.
   * /spider enable: enable tracking (the default) and retry paused coverage.
   * /spider disable: hide every cover and stop tracking.
   * Bare /spider prints diagnostics.
@@ -16,7 +16,7 @@ Client facts (docs/PLAN.md §2, verified in-client 2026-10-13):
 ]]
 
 SBeGone = SBeGone or {}
-SBeGone.version = "0.3.0"
+SBeGone.version = "0.3.1"
 local A = SBeGone.Access
 
 SBeGone.hidden = nil  -- panic-hide seam (M4); true hides every cover
@@ -40,16 +40,12 @@ SBeGone.loadSnapshot = { settingsPresent = (SBeGoneSettings ~= nil) }
 
 -- ---------------------------------------------------------------- settings
 local DEFAULTS = {
-	-- v2 schema: covers[char] is a { init = true, list = { ... } } record
-	-- instead of a bare list (SBG13). Schema 3 retires cursor detection.
-	version = 3,
+	-- Schema 4 removes all screen layouts and input-taking cover settings.
+	version = 4,
 	enabled = true,
 	coverStyle = "fox",
 	customCover = "",
-	color = { 0.55, 0.12, 0.12 },
-	opacity = 0.85,
 	coverSize = 96,
-	parkCount = 0,
 	-- ADDITIONAL name fragments on top of the curated database (SpiderDB.lua).
 	-- Empty by default: the DB already carries the owner's fragments.
 	namePatterns = {},
@@ -57,7 +53,6 @@ local DEFAULTS = {
 	requireHostile = false,
 	minLevel = 1,
 	maxLevel = 99,
-	covers = {}, -- per character: { init = true, list = { {x,y,w,h,kind}, ... } }
 	-- Native nameplate tracking is the only detection mode.
 	trackScale = 1.6,   -- cover local size = plate local width x this
 	-- drop: centre the cover this many cover-heights below the plate.
@@ -80,7 +75,6 @@ local DEFAULTS = {
 	-- at a spider, read the 'SBG| near:' line, then /spider near <N>. 0 = off.
 	nearThreshold = 0,
 	nearBoost = 2.6,
-	arrange = false,    -- true = covers take the mouse so they can be dragged
 	debug = false,
 }
 
@@ -92,21 +86,21 @@ local function freshDefault(v)
 end
 
 local function EnsureSettings()
-	SBeGoneSettings = SBeGoneSettings or {}
+	if type(SBeGoneSettings) ~= "table" then SBeGoneSettings = {} end
 	local s = SBeGoneSettings
 	-- Versioned schema: missing or wrong-typed keys get fresh defaults;
-	-- valid user data (incl. the per-character cover lists) is kept.
+	-- supported preferences are kept.
 	for k, v in pairs(DEFAULTS) do
 		if type(s[k]) ~= type(v) then
 			s[k] = freshDefault(v)
 		end
 	end
-	-- Retire the old mode selectors. An enabled installation now tracks even
-	-- if it previously selected the cursor mode. Preserve enabled=false.
-	s.autoTrack = nil
-	s.stickyCovers = nil
+	-- Purge retired fields for every character at once. A late-loaded save
+	-- must not restore an input-taking mode or any screen-positioned cover.
+	for _, key in ipairs({ "autoTrack", "stickyCovers", "parkCount", "arrange", "covers", "color", "opacity" }) do
+		s[key] = nil
+	end
 	SBeGone.Appearance.Normalize(s)
-	for char in pairs(s.covers) do SBeGone.Cover.SavedList(s, char) end
 	s.version = DEFAULTS.version
 	SBeGone.debug = (s.debug == true)
 end
@@ -115,18 +109,6 @@ EnsureSettings()
 -- ----------------------------------------------------------------- slash
 _G.SLASH_SPIDER1 = "/spider"
 _G.SLASH_SPIDER2 = "/spidergone"
-
-function SBeGone.ClearCovers()
-	if not SBeGone.ready then
-		print("SBG| not in a character yet - nothing to clear")
-		return
-	end
-	SBeGone.DeathWarning.Clear()
-	SBeGone.track = {}
-	SBeGone.trackSlots = {}
-	SBeGone.Cover.ClearAll()
-	SBeGone.Cover.Save()
-end
 
 function SBeGone.Slash(msg)
 	local first = string.match(msg or "", "^%s*(%S+)") or ""
@@ -139,83 +121,30 @@ function SBeGone.Slash(msg)
 	elseif first == "on" or first == "enable" then
 		SBeGone.DeathWarning.Clear()
 		SBeGoneSettings.enabled = true
-		SBeGoneSettings.arrange = false
 		SBeGone.autoSuspended = false
 		SBeGone.trackFailures = 0
 		SBeGone.tickErrors = 0
 		if SBeGone.ready then
 			SBeGone.ClearTrack()
-			SBeGone.Cover.Restore(SBeGone.char)
-			SBeGone.Cover.ApplyInteractivity()
+			SBeGone.Cover.Init()
+			SBeGone.Cover.ApplyStyle()
 			SBeGone.Refresh()
 		end
 		print("SBG| enabled - tracking visible spider nameplates")
 	elseif first == "off" or first == "disable" then
 		SBeGone.DeathWarning.Clear()
 		SBeGoneSettings.enabled = false
-		SBeGoneSettings.arrange = false
 		if SBeGone.ready then
-			SBeGone.Cover.Save()
 			SBeGone.ClearTrack()
 			SBeGone.Cover.HideAll()
-			SBeGone.Cover.ApplyInteractivity()
 		end
 		print("SBG| disabled - all covers hidden (/spider enable restores tracking)")
 	elseif first == "toggle" then
 		SBeGone.Slash(SBeGoneSettings.enabled and "disable" or "enable")
-	elseif first == "clear" then
-		SBeGone.ClearCovers()
-		print("SBG| all covers cleared (saved for this character)")
-	elseif first == "parks" then
-		-- Parked shields are a first-run convenience, not part of the phobia
-		-- protection; let the owner set the count (0 = none) without touching
-		-- SavedVariables by hand.
-		local n = tonumber(string.match(msg or "", "^%s*parks%s+(%S+)"))
-		if not n then
-			print(("SBG| parked shields = %d (set with: /spider parks N - 0 removes them)"):format(
-				SBeGoneSettings.parkCount or 0))
-		elseif not SBeGone.ready then
-			print("SBG| not in a character yet - parked count unchanged")
-		else
-			n = math.floor(n)
-			if n < 0 then n = 0 end
-			if n > SBeGone.Cover.MAX then n = SBeGone.Cover.MAX end
-			SBeGoneSettings.parkCount = n
-			SBeGone.Cover.RemoveKind("park")
-			SBeGone.Cover.Park(n)
-			SBeGone.Cover.Save()
-			print(("SBG| parked shields = %d"):format(n))
-		end
-	elseif first == "auto" then
-		print("SBG| auto command retired - use /spider enable or /spider disable")
-	elseif first == "arrange" then
-		-- Covers are click-through by default (a disc must not eat the click
-		-- under it). Arrange mode hands the mouse back so they can be dragged.
-		if not SBeGoneSettings.enabled then
-			print("SBG| disabled - /spider enable before arranging manual shields")
-			return
-		end
-		local a = string.match(msg or "", "^%s*arrange%s+(%S+)") or ""
-		if a == "on" then
-			SBeGone.DeathWarning.Clear()
-			SBeGoneSettings.arrange = true
-			if SBeGone.ready then
-				SBeGone.ClearTrack()
-				SBeGone.Cover.ApplyInteractivity()
-			end
-			print("SBG| arrange ON - covers take the mouse and stop tracking; drag them, then /spider arrange off")
-		elseif a == "off" then
-			SBeGoneSettings.arrange = false
-			if SBeGone.ready then SBeGone.Cover.ApplyInteractivity() end
-			print("SBG| arrange OFF - covers are click-through again")
-		else
-			print("SBG| arrange is " .. (SBeGoneSettings.arrange and "ON" or "OFF")
-				.. " ( /spider arrange on to drag covers )")
-		end
 	elseif first == "grow" or first == "drop" or first == "size" then
 		-- grow = cover size relative to the plate; drop = how far below the
 		-- plate the cover is centred (models hang below their nameplate);
-		-- size = fixed size of manual parked covers.
+		-- size = fallback UI size when a plate width is unavailable.
 		local key = (first == "grow") and "trackScale" or (first == "drop") and "drop" or "coverSize"
 		local v = tonumber(string.match(msg or "", "^%s*%S+%s+(%S+)"))
 		if not v then
@@ -246,15 +175,6 @@ function SBeGone.Slash(msg)
 			if v < 0 then v = 0 elseif v > 1000 then v = 1000 end
 			SBeGoneSettings.nearThreshold = v
 			print(("SBG| near = %d (0 = off)"):format(v))
-		end
-	elseif first == "release" then
-		-- Tracked covers return on the next scan; manual shields are kept.
-		if not SBeGone.ready then
-			print("SBG| not in a character yet - nothing to release")
-		else
-			SBeGone.ClearTrack()
-			SBeGone.Cover.Save()
-			print("SBG| released tracked covers (parked shields kept)")
 		end
 	elseif first == "debug" then
 		local a = string.match(msg or "", "^%s*debug%s+(%S+)") or ""
@@ -325,8 +245,8 @@ function SBeGone.Slash(msg)
 	elseif first == "help" then
 		-- No '|' chars in chat text: the WoW chat filter eats chat-control
 		-- sequences like |t / |h (SBG11) — use ' / ' separators.
-		print("SBG| /spider [enable / disable / toggle / clear / release / arrange N / parks N / grow N / drop N / near N / size N / name X / names / forget X / debug N / help]")
-		print("SBG| /spider config - cover picker / /spider cover <fox / red / blue / sage / charcoal / custom PATH>")
+		print("SBG| /spider enable / disable / config - image picker / cover <fox / red / blue / sage / charcoal / custom PATH>")
+		print("SBG| Advanced: grow N / drop N / near N / size N / name X / names / forget X / debug on / debug off")
 	else
 		print(("SBG| unknown subcommand '%s' - /spider help for usage"):format(first))
 	end
@@ -355,17 +275,6 @@ function SBeGone.Selftest()
 		SBeGone.version, tostring(build), tostring(buildNo), tostring(buildDate),
 		tostring(iface), lua))
 	local s = SBeGoneSettings
-	local saved = 0
-	if SBeGone.char and type(s.covers) == "table" then
-		local rec = s.covers[SBeGone.char]
-		local list
-		if type(rec) == "table" then
-			list = (type(rec.list) == "table") and rec.list or rec
-		end
-		if list then
-			for _ in ipairs(list) do saved = saved + 1 end
-		end
-	end
 	local warning = SBeGone.DeathWarning
 	local popupState = warning.popupUnavailable and "unavailable" or (warning.expires and "active" or "idle")
 	print(("SBG| enabled=%s | char=%s | driver=%s | corpsePopup=%s | cover=%s"):format(
@@ -377,10 +286,10 @@ function SBeGone.Selftest()
 			if SBeGone.Cover.IsAllocated(slot) then tracked = tracked + 1 end
 		end
 	end
-	print(("SBG| mode=tracking tracked=%d arrange=%s grow=%s drop=%s near=%s | covers shown=%d/%d | saved=%d | size=%s | limited=%s paused=%s"):format(
-		tracked, tostring(s.arrange), tostring(s.trackScale),
+	print(("SBG| mode=tracking tracked=%d grow=%s drop=%s near=%s | covers shown=%d/%d | fallbackSize=%s | limited=%s paused=%s"):format(
+		tracked, tostring(s.trackScale),
 		tostring(s.drop), tostring(s.nearThreshold),
-		SBeGone.Cover.ShownCount(), SBeGone.Cover.MAX, saved,
+		SBeGone.Cover.ShownCount(), SBeGone.Cover.MAX,
 		tostring(s.coverSize), tostring(SBeGone.coverageLimited == true), tostring(SBeGone.autoSuspended == true)))
 end
 
@@ -434,21 +343,12 @@ function SBeGone.StartDriver()
 	C_Timer.After(tickInterval, SBeGone.Tick)
 end
 
--- Scan accessible nameplates, then pick up optional manual-shield drags.
+-- Scan accessible native nameplates. Covers never handle pointer input.
 function SBeGone.Update()
-	local s = SBeGoneSettings
-	if not SBeGone.ready or not s.enabled or SBeGone.hidden then return end
+	if not SBeGone.ready or not SBeGoneSettings.enabled or SBeGone.hidden then return end
 	SBeGone.coverageLimited = SBeGone.autoSuspended == true
 	SBeGone.Cover.RetryReleases()
-	if SBeGone.autoSuspended then return end
-	-- /spider arrange: the owner is positioning covers by hand, so nothing
-	-- tracks and nothing is allocated until arrange is off.
-	if s.arrange then
-		SBeGone.Cover.SyncDrags()
-		return
-	end
-	SBeGone.TrackTick()
-	SBeGone.Cover.SyncDrags()
+	if not SBeGone.autoSuspended then SBeGone.TrackTick() end
 end
 
 -- ------------------------------------------------------------ auto-track (M3.5)
@@ -471,8 +371,8 @@ end
 --
 -- Accepted consequence: a frame anchored to a restricted frame cannot be
 -- measured by us either (our own GetPoint threw the same error in that
--- session), so tracked covers are not persistable and their position is
--- verified visually, not numerically. Cover.Save/SyncDrags skip anchored slots.
+-- session), so no cover coordinates are queried or persisted. Their position is
+-- verified visually on the test client.
 
 local MAX_PLATES_SCAN = 40 -- nameplate1..N tokens; plates are not dense
 local MIN_TRACK, MAX_TRACK = 16, 512
@@ -568,7 +468,7 @@ end
 
 -- Cover calls this when it sacrifices a slot to make room: an entry that points
 -- at a slot we no longer own has to go, otherwise the next tick adopts whatever
--- cover now lives at that index (for example, a parked shield).
+-- unit now owns that index.
 if SBeGone.Cover then
 	SBeGone.Cover.onEvict = function(slot)
 		local token = SBeGone.trackSlots and SBeGone.trackSlots[slot]
@@ -579,14 +479,10 @@ if SBeGone.Cover then
 	end
 end
 
--- Release every tracked cover (disable, arrange mode, /spider release).
+-- Release the entire nameplate-only pool, including deferred/orphaned slots.
 function SBeGone.ClearTrack()
-	local C = SBeGone.Cover
-	for token, slot in pairs(SBeGone.track) do
-		if C.IsAllocated(slot) then C.Release(slot) end
-	end
-	SBeGone.track = {}
-	SBeGone.trackSlots = {}
+	SBeGone.Cover.ClearAll()
+	SBeGone.track, SBeGone.trackSlots = {}, {}
 end
 
 function SBeGone.TrackTick()
@@ -617,12 +513,11 @@ function SBeGone.TrackTick()
 				local slot = t[token]
 				if plate then
 					live[token] = true
-					-- Adopt an entry only if its kind and reverse map still agree:
-					-- pool indices are recycled and may belong to a parked shield.
-					if slot == nil or C.KindOf(slot) ~= "track"
+					-- Adopt an entry only if its allocation and reverse map agree:
+					-- pool indices are recycled between different units.
+					if slot == nil or not C.IsAllocated(slot)
 						or SBeGone.trackSlots[slot] ~= token then
-						-- Prefer sacrificing another track cover over parked shields.
-						slot = C.Allocate("track", nil, nil, "track")
+						slot = C.Allocate()
 						if slot ~= nil then
 							bindTrack(token, slot)
 						else
@@ -679,7 +574,7 @@ function SBeGone.TrackTick()
 	-- strobe the cover.
 	for token, slot in pairs(t) do
 		local state = C.pool[slot]
-		if state == nil or not state.allocated or state.kind ~= "track" then
+		if state == nil or not state.allocated then
 			dropTrack(token)
 		elseif live[token] then
 			state.miss = 0
@@ -701,13 +596,8 @@ function SBeGone.TrackTick()
 end
 
 -- ---------------------------------------------------------------- lifecycle
--- The restore point needs two things: (a) a character, and (b) this account's
--- SavedVariables actually in hand. (b) is the SBG13 lesson: on 2026-10-15 the
--- character's list was on disk as "cleared" (covers[char] = {}) yet every
--- /reload showed the 8 default parks with saved=0 — Restore had taken the
--- first-run branch, i.e. it ran against settings that did not carry the record.
--- Until VARIABLES_LOADED has been seen (unless the settings table was already
--- populated at script load), refuse to restore rather than guess.
+-- Wait for a character and its actual SavedVariables before applying the
+-- settings migration. This client may supply them after addon script load.
 function SBeGone.OnEnterWorld()
 	if SBeGone.ready then return true end
 	if not SBeGone.loadSnapshot.settingsPresent and not SBeGone.sawVariablesLoaded then
@@ -719,18 +609,15 @@ function SBeGone.OnEnterWorld()
 	SBeGone.char = char
 	SBeGone.ready = true
 	SBeGone.DeathWarning.Clear()
-	-- Saved manual shields are restored; native covers are rebuilt by tracking.
+	-- Every cover is rebuilt from live nameplates; none are restored from disk.
 	SBeGone.track = {}
 	SBeGone.trackSlots = {}
 	SBeGone.trackFailures = 0
 	SBeGone.autoSuspended = false
 	SBeGone.tickErrors = 0
-	-- Arrange mode is a transient editing state: if it survived in
-	-- SavedVariables, every cover would eat clicks at login (playability rule),
-	-- so a fresh session always starts click-through.
-	SBeGoneSettings.arrange = false
-	SBeGone.Cover.Restore(char)
-	SBeGone.Cover.ApplyInteractivity()
+	SBeGone.Cover.Init()
+	SBeGone.Cover.ClearAll()
+	SBeGone.Cover.ApplyStyle()
 	SBeGone.StartDriver()
 	return true
 end
@@ -803,8 +690,7 @@ EnsureEventFrame()
 
 -- If we load already in-world (e.g. /reload in character) AND the settings
 -- were already applied at script load, enter now. Otherwise PLAYER_ENTERING_WORLD
--- and VARIABLES_LOADED above cover it — restoring any earlier would read empty
--- settings and re-spawn the default parks over the saved state (SBG13).
+-- and VARIABLES_LOADED above cover it, ensuring migration sees the real save.
 if UnitName and UnitName("player") and SBeGone.loadSnapshot.settingsPresent then
 	SBeGone.OnEnterWorld()
 end

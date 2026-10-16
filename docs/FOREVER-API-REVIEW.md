@@ -1,3 +1,5 @@
+> Historical reference only. v0.3.1 removed screen-positioned covers and all editing/input modes. Follow [HANDOFF.md](HANDOFF.md) for the current implementation and test machine. This file is not shipped in the addon ZIP.
+
 # Forever 1.60.1: overlay API and restriction review
 
 Historical audit of v0.2.4. Its implementation gaps are addressed in the

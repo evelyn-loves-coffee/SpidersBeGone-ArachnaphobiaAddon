@@ -1,11 +1,12 @@
-# Choose your cover image (v0.3.0)
+# Choose your cover image (v0.3.1)
 
 Run `/spider config` to open the cover picker. Click a preset to preview it
 and update every cover immediately. The choice is saved in addon settings
 and survives reloads; the fox is the default for new or migrated settings.
 The window appears only when requested. Close it to return to play.
 
-All covers stay click-through during normal play. Changing an image while
+Covers are permanently click-through and attach only to nameplates. They
+cannot be moved by hand or restored from a saved screen layout. Changing an image while
 the addon is disabled keeps it disabled. Tracking, cover sizing and the
 1.75-second look-away warning are independent of the selected picture.
 

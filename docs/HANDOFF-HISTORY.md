@@ -1,3 +1,5 @@
+> Historical reference only. v0.3.1 removed screen-positioned covers and all editing/input modes. Follow [HANDOFF.md](HANDOFF.md) for the current implementation and test machine. This file is not shipped in the addon ZIP.
+
 # Archived handoff before v0.2.6
 
 Historical probes and previous behavior only. For current instructions use

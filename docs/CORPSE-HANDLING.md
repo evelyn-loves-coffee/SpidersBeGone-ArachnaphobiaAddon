@@ -33,8 +33,8 @@ handler correctly releases our cover and drops the token mapping.
 
 The prior client probes found no usable enemy world-position/screen-projection
 route, and nameplate measurement was restricted. See
-[API-VERIFICATION.md](API-VERIFICATION.md) and
-[FOREVER-API-REVIEW.md](FOREVER-API-REVIEW.md). Moving the cover to UIParent
+[API-VERIFICATION.md](https://github.com/evelyn-loves-coffee/SpidersBeGone-ArachnaphobiaAddon/blob/main/docs/API-VERIFICATION.md) and
+[FOREVER-API-REVIEW.md](https://github.com/evelyn-loves-coffee/SpidersBeGone-ArachnaphobiaAddon/blob/main/docs/FOREVER-API-REVIEW.md). Moving the cover to UIParent
 without a valid position would not track a corpse as the camera moves. No
 verified public API for forcing an enemy corpse to retain its native
 nameplate was identified in this review. The map-oriented UnitPositionFrame

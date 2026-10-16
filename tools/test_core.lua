@@ -1,13 +1,6 @@
--- Offline smoke test for Spiders Be Gone (M3).
--- Run from the repo root:  lua5.1 tools/test_core.lua
--- Stubs the minimal client API surface as verified on the target client
--- (docs/API-VERIFICATION.md), loads the addon files in TOC order, and
--- exercises: settings migration, predicate, pool FIFO, tracking-only controls,
--- drag sync, per-character persistence, slash commands.
--- Exit code 0 = all pass.
-
+-- Offline Lua 5.1 regression suite for nameplate-only covers.
 --------------------------------------------------------------------- stubs
-local t = 0
+local t, movementCalls = 0, 0
 GetBuildInfo = function() return "1.60.1", "70374", "Oct 12 2026", "16001" end
 GetTime = function() t = t + 0.3; return t end
 GetEffectiveScreenInfo = function() return 1772, 1181 end
@@ -95,8 +88,7 @@ local function setPlate(idx, plate)
 	return plate
 end
 
--- frame stub with faithful point/size state (GetPoint round-trips SetPoint,
--- which the drag-sync logic depends on)
+-- Frame stub: native parenting/size state, with screen measurement prohibited.
 _G.__frames = {}
 local function makeFrame()
 	local f = { visible = false, pending = false, points = {}, size = { 0, 0 }, events = {} }
@@ -112,8 +104,13 @@ local function makeFrame()
 	-- Client-faithful (SBG9): SetClampRect and SetSize are ABSENT on this
 	-- client — do not stub them, so any direct call fails the suite the
 	-- same way it fails in-game.
-	function f:EnableMouse(on) self.mouse = on end
-	function f:SetMovable(_) end
+	function f:EnableMouse(on)
+		self.mouse = on
+		self.mouseHistory = self.mouseHistory or {}
+		self.mouseHistory[#self.mouseHistory + 1] = on
+	end
+	function f:SetMovable(_) movementCalls = movementCalls + 1; error("cover movement is forbidden", 0) end
+	f.StartMoving, f.StopMovingOrSizing, f.RegisterForDrag = f.SetMovable, f.SetMovable, f.SetMovable
 	function f:SetText(value) self.text = value end
 	function f:GetText() return self.text or "" end
 	function f:SetFont(...) self.font = { ... } end
@@ -135,19 +132,7 @@ local function makeFrame()
 			x = x or 0, y = y or 0,
 		}
 	end
-	function f:GetPoint(_, relFrame, relPoint)
-		local p = self.points[1]
-		if not p then return nil end
-		if (self.parent and self.parent.restricted) or p.relFrame.restricted then
-			error("Can't measure restricted regions", 0)
-		end
-		if relFrame ~= nil and p.relFrame ~= relFrame then return nil end
-		if relPoint ~= nil and p.relPoint ~= relPoint then return nil end
-		-- Client-faithful (SBG12): (point, relativeToFrame, relativeToPoint,
-		-- x, y, width, height, absX, absY) — offsets are the 4th/5th returns.
-		return p.anchor, p.relFrame, p.relPoint, p.x, p.y,
-			self.size[1], self.size[2], p.x, p.y
-	end
+	function f:GetPoint() error("screen-position reads are forbidden", 0) end
 	-- Client-faithful (SBG8): the native CreateTexture rejects layer names
 	-- it does not know ("bad argument #3 ... self:CreateTexture(params)");
 	-- only the layers proven on this client are accepted (Spoken's working
@@ -208,21 +193,15 @@ local function flushDisplay()
 	end
 end
 
------------------------------------------------------------------- settings
--- Pre-existing (partially corrupt) SV table to verify migration on load.
-SBeGoneSettings = { enabled = "yes", color = "red", covers = 42, parkCount = 3, autoTrack = false, stickyCovers = true }
+-- Saved fixtures intentionally include the retired settings that caused
+-- input problems on the partner's client. They must be deleted, not restored.
+SBeGoneSettings = { enabled = "yes", parkCount = 8, arrange = true,
+    covers = { Partner = { init = true, list = { { x = 100, y = 200, kind = "park" } } } },
+    autoTrack = false, stickyCovers = true }
+for _, file in ipairs({ "SpiderDB", "Access", "Units", "DeathWarning", "Appearance", "Cover", "Config", "Core" }) do
+    dofile("SpidersBeGone/" .. file .. ".lua")
+end
 
---------------------------------------------------------------------- load
-dofile("SpidersBeGone/SpiderDB.lua")
-dofile("SpidersBeGone/Access.lua")
-dofile("SpidersBeGone/Units.lua")
-dofile("SpidersBeGone/DeathWarning.lua")
-dofile("SpidersBeGone/Appearance.lua")
-dofile("SpidersBeGone/Cover.lua")
-dofile("SpidersBeGone/Config.lua")
-dofile("SpidersBeGone/Core.lua")
-
---------------------------------------------------------------------- checks
 local fails = 0
 local function check(cond, label)
 	if cond then
@@ -241,59 +220,29 @@ local function capture(fn)
 	return out
 end
 
-local function findCover(x, y)
-	for i = 1, SBeGone.Cover.MAX do
-		local s = SBeGone.Cover.pool[i]
-		if s.frame:IsShown() and s.x == x and s.y == y then
-			return i, s
-		end
-	end
-	return nil
+-- ---- settings and commands --------------------------------------------
+check(SBeGoneSettings.version == 4 and SBeGoneSettings.enabled == true,
+    "upgrade: schema 4 repairs invalid enabled state")
+check(SBeGoneSettings.covers == nil and SBeGoneSettings.parkCount == nil and SBeGoneSettings.arrange == nil,
+    "upgrade: all characters' old cover layouts and input modes are removed")
+check(SBeGoneSettings.autoTrack == nil and SBeGoneSettings.stickyCovers == nil,
+    "upgrade: retired detection modes cannot suppress tracking")
+check(SBeGone.Cover.Park == nil and SBeGone.Cover.Place == nil and SBeGone.Cover.Save == nil
+    and SBeGone.Cover.Restore == nil and SBeGone.Cover.SyncDrags == nil
+    and SBeGone.Cover.ApplyInteractivity == nil, "cover: removed APIs cannot create screen covers or enable interaction")
+check(_G.SLASH_SPIDER1 == "/spider" and _G.SLASH_SPIDER2 == "/spidergone", "slash: both supported aliases are registered")
+local out = capture(function() SBeGone.Slash("") end)
+check(#out == 3 and out[1]:find("WoW 1%.60%.1") and out[3]:find("mode=tracking"),
+    "status: reports client and tracking without saved-layout controls")
+check(not table.concat(out, " "):find("arrange=") and not table.concat(out, " "):find("saved="),
+    "status: removed layout settings do not appear in diagnostics")
+for _, command in ipairs({ "park", "parks 8", "arrange on", "arrange off", "clear", "release", "auto on" }) do
+    out = capture(function() SBeGone.Slash(command) end)
+    check(#out == 1 and out[1]:find("unknown subcommand"), "slash: obsolete command has no implementation: " .. command)
 end
-
--- v2 record form: covers[char] = { init = true, list = { ... } }
-local function savedCount(char)
-	local rec = SBeGoneSettings.covers and SBeGoneSettings.covers[char]
-	if type(rec) ~= "table" then return -1 end
-	local list = (type(rec.list) == "table") and rec.list or rec
-	return #list
-end
-
--- ---- settings migration (on load) -------------------------------------
-check(SBeGoneSettings.version == 3, "settings: schema 3 retains v2 cover records")
-check(SBeGoneSettings.enabled == true, "settings: wrong-type 'enabled' reset to default")
-check(type(SBeGoneSettings.color) == "table", "settings: wrong-type 'color' reset to default")
-check(type(SBeGoneSettings.covers) == "table", "settings: wrong-type 'covers' reset to default")
-check(SBeGoneSettings.parkCount == 3, "settings: valid user value (parkCount=3) kept")
-check(SBeGoneSettings.stickyCovers == nil, "settings: retired sticky option removed")
-check(SBeGoneSettings.autoTrack == nil, "settings: retired auto-off option removed")
-check(SBeGoneSettings.arrange == false, "settings: missing key filled (arrange)")
--- ---- slash registration -------------------------------------------------
-check(_G.SLASH_SPIDER1 == "/spider", "slash: SLASH_SPIDER1")
-check(_G.SLASH_SPIDER2 == "/spidergone", "slash: SLASH_SPIDER2")
-check(type(SlashCmdList["SPIDER"]) == "function", "slash: SlashCmdList[SPIDER]")
-
--- ---- bare /spider = selftest (3 lines, before entering the world) ------
-local out = capture(function() SlashCmdList["SPIDER"]("") end)
-check(#out == 3, "selftest: prints 3 lines")
-check(out[1] and out[1]:find("^SBG| v") ~= nil, "selftest: line 1 version/build")
-check(out[1] and out[1]:find("WoW 1%.60%.1") ~= nil and out[1]:find("build 70374") ~= nil
-	and out[1]:find("interface 16001") ~= nil,
-	"selftest: line 1 reads the four-value GetBuildInfo signature (SBG2)")
-check(out[1] and out[1]:find("Lua 5%.1") ~= nil and out[1]:find("Lua Lua") == nil,
-	"selftest: Lua label appears once, not 'Lua Lua 5.1' (owner report)")
-check(out[2] and out[2]:find("^SBG| enabled=true | char=nil") ~= nil,
-	"selftest: line 2 enabled/char")
-check(out[3] and out[3]:find("covers shown=0/24") ~= nil
-	and out[3]:find("mode=tracking") ~= nil, "selftest: line 3 pool + auto-track state")
-
-out = capture(function() SlashCmdList["SPIDER"]("bogus") end)
-check(#out == 1 and out[1]:find("unknown subcommand 'bogus'") ~= nil,
-	"slash: unknown subcommand message")
-out = capture(function() SlashCmdList["SPIDER"]("help") end)
-check(#out == 2 and out[1]:find("enable / disable / toggle / clear / release") ~= nil
-	and out[1]:find("on|") == nil,
-	"slash: help usage line (pipe-free - chat filter, SBG11)")
+out = capture(function() SBeGone.Slash("help") end)
+check(#out == 2 and not table.concat(out, " "):find("parks") and not table.concat(out, " "):find("arrange")
+    and not table.concat(out, " "):find("clear / release"), "help: only supported commands are advertised")
 
 -- ---- predicate ----------------------------------------------------------
 setUnit("t", { name = "Young Night Web Spider", level = 2, famName = "Spider", famId = 3, id = 1504 })
@@ -399,245 +348,64 @@ check(SBeGone.Units.IsSpider("t6") == true, "predicate: requireHostile + hostile
 SBeGoneSettings.requireHostile = false
 clearUnits()
 
--- ---- enter world via PLAYER_ENTERING_WORLD (SBG10) ----------------------
--- Fresh-login state: no player at TOC load, so the event must do the
--- work. The client calls the OnEvent handler with NO args — the event
--- name arrives via the `event` global.
-check(SBeGone.eventFrame ~= nil, "event frame created at load")
-check(SBeGone.ready == false, "event: not ready before PLAYER_ENTERING_WORLD")
-SBeGoneSettings.parkCount = 8
-setUnit("player", { name = "TestWarrior", class = "Warrior" })
-_G.this = SBeGone.eventFrame
-_G.event = "PLAYER_ENTERING_WORLD"
-SBeGone.eventFrame.scripts["OnEvent"]()
-_G.event = nil
-check(SBeGone.ready == true and SBeGone.char == "TestWarrior",
-	"event: PLAYER_ENTERING_WORLD initializes via globals (SBG10)")
-
--- ---- enter world (first run: default pre-parked shields) ---------------
--- (OnEnterWorld is a guarded no-op here — the event already entered.)
-setUnit("player", { name = "TestWarrior", class = "Warrior" })
-SBeGone.OnEnterWorld()
-check(SBeGone.ready == true, "enter world: ready")
-check(SBeGone.Cover.inited == true, "enter world: pool inited")
-check(SBeGone.Cover.pool[1].art ~= nil and SBeGone.Cover.pool[1].base ~= nil,
-	"pool: textures created under client-faithful layer validation (SBG8)")
-check(savedCount("TestWarrior") == 8,
-	"enter world: parks saved before any display pass (deferred Show, SBG12)")
-flushDisplay()
-local sizedSlot
-for i = 1, SBeGone.Cover.MAX do
-	if SBeGone.Cover.pool[i].frame:IsShown() then sizedSlot = i; break end
-end
-check(sizedSlot ~= nil
-	and SBeGone.Cover.pool[sizedSlot].frame.size[1] == 96
-	and SBeGone.Cover.pool[sizedSlot].frame.size[2] == 96,
-	"resize: SetSize absent -> SetWidth/SetHeight fallback (SBG9)")
-check(SBeGone.Cover.ShownCount() == 8, "enter world: 8 default parked shields")
-local trec = SBeGoneSettings.covers["TestWarrior"]
-check(trec and trec.init == true and type(trec.list) == "table",
-	"save: v2 record written (cleared state cannot look like 'never ran', SBG13)")
-check(trec and trec.list[1].kind == "park", "enter world: saved kind=park")
-
--- Retired pointer input must not allocate covers, even over a spider.
-setUnit("mouseover", { name = "Forest Spider", level = 2, famId = 3, id = 1504 })
-SBeGone.Tick()
-flushDisplay()
-check(SBeGone.Cover.ShownCount() == 8 and legacyReads == 0,
-    "tracking only: a spider under the pointer creates no cursor cover")
-check(SBeGone.HoverTick == nil and SBeGone.hover == nil and SBeGone.hoverByKey == nil,
-    "tracking only: cursor detection and its runtime state are removed")
+-- ---- enter / disable / reload with legacy settings ---------------------
 clearUnits()
-setUnit("player", { name = "TestWarrior", class = "Warrior" })
-
--- ---- pool FIFO eviction --------------------------------------------------
-SBeGone.Cover.ClearAll()
-local first = SBeGone.Cover.Allocate("park", 10, 10)
-for i = 2, SBeGone.Cover.MAX do
-	SBeGone.Cover.Allocate("park", 10 + i, 10)
+setUnit("player", { name = "TestWarrior", player = true })
+SBeGoneSettings.minLevel, SBeGoneSettings.maxLevel, SBeGoneSettings.requireHostile = 1, 99, false
+SBeGoneSettings.trackScale, SBeGoneSettings.drop, SBeGoneSettings.coverSize = 1.6, 0.5, 96
+SBeGone.ready = false
+event = "PLAYER_ENTERING_WORLD"
+SBeGone.eventFrame.scripts.OnEvent()
+event = nil
+flushDisplay()
+check(SBeGone.ready and SBeGone.driverOn and SBeGone.Cover.ShownCount() == 0,
+    "login: starts tracking without spawning a screen-positioned cover")
+local allQuiet = true
+for _, slot in ipairs(SBeGone.Cover.pool) do
+    if slot.frame.mouse ~= false or slot.frame.points[1] ~= nil then allQuiet = false end
 end
-local extra = SBeGone.Cover.Allocate("park", 999, 999)
-flushDisplay()
-check(SBeGone.Cover.ShownCount() == 24, "pool: capped at 24")
-check(extra == first, "pool: FIFO evicts the oldest slot")
-check(SBeGone.Cover.pool[extra].x == 999, "pool: evicted slot reused at new position")
-SBeGone.Cover.ClearAll()
-
--- ---- /spider clear -------------------------------------------------------
-SlashCmdList["SPIDER"]("clear")
-check(SBeGone.Cover.ShownCount() == 0, "clear: all covers hidden")
-check(savedCount("TestWarrior") == 0, "clear: saved list emptied (present, not nil)")
-
--- ---- canonical enable/disable: immediate tracking, complete hiding -------
-setUnit("nameplate1", { name = "Forest Spider", level = 2, famId = 3, id = 1504 })
+check(allQuiet and movementCalls == 0, "login: every pooled frame ignores input and has no screen anchor")
+setUnit("nameplate1", { name = "Forest Spider", famId = 3, level = 10 })
 setPlate(1, makePlate(100, 1))
-SlashCmdList["SPIDER"]("enable")
-flushDisplay()
-check(SBeGoneSettings.enabled and SBeGone.track.nameplate1 ~= nil
-    and SBeGone.Cover.ShownCount() == 1, "enable: immediately tracks without pointer input")
-local manual = SBeGone.Cover.Allocate("park", 100, 200)
-SBeGone.Cover.Save()
-flushDisplay()
-SlashCmdList["SPIDER"]("disable")
-flushDisplay()
-check(not SBeGoneSettings.enabled and next(SBeGone.track) == nil,
-    "disable: tracking state and allocations are released")
-check(SBeGone.Cover.ShownCount() == 0 and savedCount("TestWarrior") == 1,
-    "disable: hides automatic and manual covers while preserving manual layout")
 SBeGone.Tick()
-SBeGone.Update()
-SBeGone.Refresh()
-SBeGone.TrackTick()
+flushDisplay()
+check(SBeGone.Cover.ShownCount() == 1, "enable: native tracking starts without targeting or mouseover")
+capture(function() SBeGone.Slash("disable") end)
+SBeGone.Tick()
 event, arg1 = "NAME_PLATE_UNIT_ADDED", "nameplate1"
 SBeGone.eventFrame.scripts.OnEvent()
 event, arg1 = nil, nil
 flushDisplay()
 check(SBeGone.Cover.ShownCount() == 0 and next(SBeGone.track) == nil,
-    "disable: timers, direct refreshes and plate events cannot recreate covers")
-SlashCmdList["SPIDER"]("parks 2")
-SlashCmdList["SPIDER"]("arrange on")
+    "disable: scan and plate events cannot recreate a cover")
+-- Simulate SavedVariables arriving after script load on the partner's client.
+SBeGoneSettings = { enabled = false, coverStyle = "blue", parkCount = 12, arrange = true,
+    covers = { A = { { x = 3, y = 4, kind = "park" } }, B = { list = { { x = 5, y = 6 } } } } }
+SBeGone.ready, SBeGone.loadSnapshot.settingsPresent, SBeGone.sawVariablesLoaded = false, false, false
+check(not SBeGone.OnEnterWorld(), "upgrade: waits for the actual late-loaded save")
+event = "VARIABLES_LOADED"
+SBeGone.eventFrame.scripts.OnEvent()
+event = nil
 flushDisplay()
-check(SBeGone.Cover.ShownCount() == 0 and not SBeGone.Cover.pool[manual].frame.mouse,
-    "disable: manual-shield commands cannot show covers or capture input")
+check(SBeGoneSettings.version == 4 and SBeGoneSettings.covers == nil
+    and SBeGoneSettings.parkCount == nil and SBeGoneSettings.arrange == nil,
+    "upgrade: late-loaded saved layouts and arrange=true are purged across characters")
+check(SBeGoneSettings.enabled == false and SBeGoneSettings.coverStyle == "blue" and SBeGone.Cover.ShownCount() == 0,
+    "upgrade: preserves disabled state and image choice without restoring covers")
+capture(function() SBeGone.Slash("enable") end)
+flushDisplay()
+check(SBeGoneSettings.enabled and SBeGone.Cover.ShownCount() == 1,
+    "enable: resumes only the live nameplate cover")
+capture(function() SBeGone.Slash("enable") end)
+flushDisplay()
+check(SBeGone.Cover.ShownCount() == 1, "enable: repeated enable cannot duplicate covers")
+SBeGoneSettings = {}
 SBeGone.ready = false
 SBeGone.OnEnterWorld()
-flushDisplay()
-check(not SBeGoneSettings.enabled and SBeGone.Cover.ShownCount() == 0
-    and savedCount("TestWarrior") == 2, "disable: persisted off state survives character reload")
-SlashCmdList["SPIDER"]("enable")
-flushDisplay()
-check(SBeGone.Cover.ShownCount() == 3 and SBeGone.track.nameplate1 ~= nil
-    and not SBeGoneSettings.arrange, "enable: restores manual shields and resumes click-through tracking")
-SlashCmdList["SPIDER"]("enable")
-flushDisplay()
-check(SBeGone.Cover.ShownCount() == 3, "enable: repeated enable does not duplicate covers")
-SlashCmdList["SPIDER"]("off")
-check(not SBeGoneSettings.enabled and SBeGone.Cover.ShownCount() == 0,
-    "aliases: off still disables every cover")
-SlashCmdList["SPIDER"]("on")
-check(SBeGoneSettings.enabled, "aliases: on still enables tracking")
-SlashCmdList["SPIDER"]("toggle")
-check(not SBeGoneSettings.enabled, "toggle: enabled switches to disabled")
-SlashCmdList["SPIDER"]("toggle")
-check(SBeGoneSettings.enabled, "toggle: disabled switches to enabled")
-clearUnits()
-setPlate(1, nil)
+SBeGone.ClearTrack()
+check(SBeGoneSettings.coverStyle == "fox" and SBeGoneSettings.enabled and SBeGoneSettings.covers == nil,
+    "defaults: fresh install selects the fox and enables only tracking")
 
--- ---- drag sync + place epsilon -------------------------------------------
-SBeGone.Cover.ClearAll()
-SBeGone.Cover.Save()
-local di = SBeGone.Cover.Allocate("park", 300, 400)
-flushDisplay()
-SBeGone.Cover.pool[di].frame:SetPoint("CENTER", UIParent, "BOTTOMLEFT", 777, 888)
-SBeGone.Cover.SyncDrags()
-check(SBeGone.Cover.pool[di].x == 777 and SBeGone.Cover.pool[di].y == 888,
-	"drags: dragged position adopted")
-check(savedCount("TestWarrior") == 1 and SBeGoneSettings.covers["TestWarrior"].list[1].x == 777,
-	"drags: dragged position saved")
-SBeGone.Cover.Place(di, 777.4, 888.2)
-check(SBeGone.Cover.pool[di].frame.points[1].x == 777,
-	"place: sub-pixel movement ignored (epsilon)")
-SBeGone.Cover.pool[di].frame:SetPoint("CENTER", UIParent, "BOTTOMLEFT", 99999, -50)
-SBeGone.Cover.SyncDrags()
-check(SBeGone.Cover.pool[di].x == 1772 and SBeGone.Cover.pool[di].y == 0,
-	"drags: off-screen drag soft-clamped to screen bounds (SBG9)")
-
--- ---- per-character persistence -------------------------------------------
-SBeGoneSettings.covers["OtherChar"] = {
-	{ x = 500, y = 500, w = 80, h = 80, kind = "park" },
-}
-SBeGone.ready = false
-SBeGone.char = nil
-clearUnits()
-setUnit("player", { name = "OtherChar", class = "Warrior" })
-SBeGone.OnEnterWorld()
-flushDisplay()
-check(SBeGone.char == "OtherChar", "chars: switched character")
-check(SBeGone.Cover.ShownCount() == 1, "chars: OtherChar's saved cover restored")
-local oc = SBeGone.Cover.pool
-local found = false
-for i = 1, SBeGone.Cover.MAX do
-	if oc[i].frame:IsShown() and oc[i].x == 500 then
-		found = oc[i].w == 80 and oc[i].h == 80
-	end
-end
-check(found, "chars: restored cover size 80x80")
-check(savedCount("TestWarrior") == 1, "chars: TestWarrior's list untouched")
-check(SBeGoneSettings.covers["OtherChar"].init == true
-	and #SBeGoneSettings.covers["OtherChar"].list == 1,
-	"migrate: v1 bare list upgraded to v2 record without losing the cover")
-
-SBeGone.ready = false
-SBeGone.char = nil
-clearUnits()
-setUnit("player", { name = "FreshChar", class = "Warrior" })
-SBeGoneSettings.parkCount = 8 -- explicitly configured manual shields, not the default
-SBeGone.OnEnterWorld()
-flushDisplay()
-check(SBeGone.Cover.ShownCount() == 8, "chars: fresh character gets its configured 8 manual parks")
-check(savedCount("FreshChar") == 8, "chars: fresh character's parks saved")
-
--- ---- /spider parks -------------------------------------------------------
-SBeGone.ready = false
-SBeGone.char = nil
-clearUnits()
-setUnit("player", { name = "TestWarrior", class = "Warrior", player = true })
-SBeGone.OnEnterWorld()
-flushDisplay()
-check(SBeGone.Cover.ShownCount() == 1, "parks: TestWarrior restored (1 cover, no respawn)")
-out = capture(function() SlashCmdList["SPIDER"]("parks") end)
-check(#out == 1 and out[1]:find("parked shields = 8") ~= nil,
-	"parks: bare form reports the count")
--- /spider parks manages kind="park" covers only; the requested parked set replaces the previous parked set.
-local function countKind(kind)
-	local n = 0
-	for i = 1, SBeGone.Cover.MAX do
-		local sl = SBeGone.Cover.pool[i]
-		if sl.frame:IsShown() and sl.kind == kind then n = n + 1 end
-	end
-	return n
-end
-SlashCmdList["SPIDER"]("parks 3")
-flushDisplay()
-check(SBeGoneSettings.parkCount == 3, "parks: parkCount set to 3")
-check(countKind("park") == 3,
-	"parks: old parks removed, 3 new parked")
-check(SBeGone.Cover.ShownCount() == 3 and savedCount("TestWarrior") == 3,
-	"parks: previous manual shield replaced by the requested 3 parks")
-SlashCmdList["SPIDER"]("parks 0")
-flushDisplay()
-check(countKind("park") == 0 and SBeGone.Cover.ShownCount() == 0
-	and savedCount("TestWarrior") == 0,
-	"parks 0: every manual parked shield removed and saved")
-
--- ---- cleared state survives a relog (SBG13 regression) -------------------
-SlashCmdList["SPIDER"]("clear")
-check(SBeGone.Cover.ShownCount() == 0, "clear: all covers hidden")
-SBeGone.ready = false
-SBeGone.char = nil
-SBeGone.OnEnterWorld()
-flushDisplay()
-check(SBeGone.Cover.ShownCount() == 0,
-	"SBG13: cleared character is NOT re-parked on the next restore")
-check(savedCount("TestWarrior") == 0, "SBG13: cleared record stays empty")
-
--- ---- restore waits for SavedVariables (SBG13 load order) -----------------
-SBeGone.ready = false
-SBeGone.char = nil
-SBeGone.sawVariablesLoaded = nil
-SBeGone.loadSnapshot.settingsPresent = false
-check(SBeGone.OnEnterWorld() == false,
-	"SBG13: restore refused when settings were not applied at script load")
-check(SBeGone.ready == false, "SBG13: still not ready (no guess-restored)")
-_G.this = SBeGone.eventFrame
-_G.event = "VARIABLES_LOADED"
-SBeGone.eventFrame.scripts["OnEvent"]()
-_G.event = nil
-check(SBeGone.sawVariablesLoaded == true and SBeGone.ready == true,
-	"SBG13: VARIABLES_LOADED unlocks the restore")
-
---------------------------------------------------------------------- result
--- ============================================================ M3.5 auto-track
 -- The owner's actual goal (2026-10-15): walk toward spiders, no targeting and
 -- no mouseover, and a cover appears over each spider model, moving and
 -- resizing with it. Client facts this rests on (in game, same day):
@@ -666,7 +434,7 @@ flushDisplay()
 local trA = SBeGone.track.nameplate1
 check(SBeGone.Cover.ShownCount() == 1,
 	"track: one cover for the visible spider, none for the beast (no mouseover needed)")
-check(trA ~= nil and SBeGone.Cover.pool[trA].kind == "track", "track: cover kind is track")
+check(trA ~= nil and SBeGone.Cover.IsAllocated(trA), "track: matching unit owns an allocated cover")
 check(SBeGone.Cover.pool[trA].anchored == true, "track: cover is anchored to the plate")
 local ptA = SBeGone.Cover.pool[trA].frame.points[1]
 check(ptA and ptA.relFrame == plateA and ptA.anchor == "CENTER" and ptA.relPoint == "CENTER",
@@ -717,10 +485,7 @@ plateA:SetWidth(200)
 SBeGone.Tick()
 check(SBeGone.Cover.pool[trA].w == 320, "track: cover grows when the plate's local width grows")
 
--- Tracked covers are not persisted (their position belongs to a spider that
--- will not exist next session, and an anchored frame cannot be measured).
-SBeGone.Cover.Save()
-check(savedCount("TestWarrior") == 0, "track: anchored covers are not written to SavedVariables")
+check(SBeGoneSettings.covers == nil, "track: no live cover positions are persisted")
 
 -- Frame IDs are pool allocation IDs, not unit IDs. Swap the globals without
 -- changing the creatures, just as the client does when plates are recycled.
@@ -841,143 +606,104 @@ for _ = 1, 6 do SBeGone.Tick() end
 flushDisplay()
 check(SBeGone.Cover.ShownCount() == 0 and SBeGone.track.nameplate1 == nil,
 	"track: cover is auto-released once the spider is gone")
-local released = SBeGone.Cover.pool[trA].frame
-local reused = SBeGone.Cover.Allocate("park", 350, 250)
-check(reused == trA and released:GetParent() == UIParent and released:GetEffectiveScale() == 1,
-	"pool: a formerly tracked slot becomes an ordinary screen cover when reused")
-local dragOK = pcall(SBeGone.Cover.SyncDrags)
-check(dragOK, "pool: released plate children can be measured again without restricted geometry")
-SBeGone.Cover.Release(reused)
-
-local refused = SBeGone.Cover.AllocateUnpositioned("track", "track")
-local refusedFrame = SBeGone.Cover.pool[refused].frame
-local originalParent = refusedFrame.SetParent
+-- ---- hidden allocation, FIFO reuse, ownership and blocked cleanup -------
+local C = SBeGone.Cover
+C.ClearAll()
+local firstSlot = C.Allocate()
+flushDisplay()
+check(C.IsAllocated(firstSlot) and C.ShownCount() == 0 and C.pool[firstSlot].frame.points[1] == nil,
+    "pool: allocation alone never places or shows a cover")
+for _ = 2, C.MAX do C.Allocate() end
+local recycled = C.Allocate()
+check(recycled == firstSlot, "pool: overflow recycles the oldest native-cover allocation")
+local activeCount = 0
+for _, slot in ipairs(C.pool) do if slot.allocated then activeCount = activeCount + 1 end end
+check(activeCount == C.MAX and #C.free == 0, "pool: overflow stays bounded without creating frames")
+C.ClearAll()
+local poolPlate = makePlate(100, 1)
+local refused = C.Allocate()
+local refusedFrame = C.pool[refused].frame
+local parentCall = refusedFrame.SetParent
 refusedFrame.SetParent = function(self, parent)
-	if parent == plateA then error("parenting refused", 0) end
-	return originalParent(self, parent)
+    if parent == poolPlate then error("parent rejected", 0) end
+    return parentCall(self, parent)
 end
-check(not SBeGone.Cover.PlaceTracked(refused, plateA, 50),
-	"track: client parenting refusal is reported as an attachment failure")
-SBeGone.Cover.Release(refused)
-check(refusedFrame:GetParent() == UIParent and not refusedFrame:IsShown(),
-	"track: refused attachment leaves no visible orphaned cover")
-refusedFrame.SetParent = originalParent
-
--- Eviction preference: a full pool of parked shields is not eaten while
--- tracked covers exist to sacrifice instead.
-SBeGone.Cover.ClearAll()
-local parkSlot = SBeGone.Cover.Allocate("park", 10, 10)
--- bounded: the pool holds MAX slots, and frames only become "shown" when the
--- display queue is flushed, so never loop on ShownCount here
-for _ = 2, SBeGone.Cover.MAX do
-	SBeGone.Cover.Allocate("park", 20, 20)
-end
-local t1 = SBeGone.Cover.Allocate("track", nil, nil, "track")
-local t2 = SBeGone.Cover.Allocate("track", nil, nil, "track")
-check(t2 == t1, "pool: a new tracked cover sacrifices another TRACKED cover first")
-check(SBeGone.Cover.IsAllocated(parkSlot), "pool: parked shields survive preferential eviction")
-
--- arrange mode: covers take the mouse, tracking stops, nothing follows.
-SBeGone.Cover.ClearAll()
-setUnit("nameplate1",
-	{ name = "Young Night Web Spider", level = 24, famId = 3, id = 1504 })
-SBeGone.Tick()
-flushDisplay()
-check(SBeGone.Cover.ShownCount() == 1, "arrange: tracking active before arrange mode")
-capture(function() SlashCmdList["SPIDER"]("arrange on") end)
-flushDisplay()
-check(SBeGoneSettings.arrange == true and SBeGone.Cover.ShownCount() == 0,
-	"arrange on: tracked covers released so they can be dragged")
-SBeGone.Tick()
-check(SBeGone.Cover.ShownCount() == 0, "arrange: no tracking while arranging (covers stay put)")
-local interactive = true
-for i = 1, SBeGone.Cover.MAX do
-	if SBeGone.Cover.pool[i].frame.mouse ~= true then interactive = false end
-end
-check(interactive, "arrange: every cover accepts the mouse so it can be dragged")
-capture(function() SlashCmdList["SPIDER"]("arrange off") end)
-check(SBeGoneSettings.arrange == false and SBeGone.Cover.pool[1].frame.mouse == false,
-	"arrange off: covers are click-through again (a disc must not eat clicks)")
-SBeGone.Tick()
-flushDisplay()
-check(SBeGone.Cover.ShownCount() == 1, "arrange off: tracking resumes")
-
--- /spider release keeps manual shields; tracking resumes on the next scan.
-SBeGone.Cover.ClearAll()
+check(not C.PlaceTracked(refused, poolPlate, 40), "attach: native parenting refusal is honored")
+C.Release(refused)
+check(not refusedFrame:IsShown() and refusedFrame.parent == UIParent,
+    "attach: parenting refusal leaves no visible screen cover")
+refusedFrame.SetParent = parentCall
+refused = C.Allocate()
+refusedFrame = C.pool[refused].frame
+local pointCall = refusedFrame.SetPoint
+refusedFrame.SetPoint = function() error("anchor rejected", 0) end
+check(not C.PlaceTracked(refused, poolPlate, 40) and C.pool[refused].anchored,
+    "attach: partial attachment is recorded when the native anchor fails")
+C.Release(refused)
+refusedFrame.SetPoint = pointCall
+check(not C.pool[refused].anchored and not refusedFrame:IsShown() and refusedFrame.points[1] == nil,
+    "attach: partial attachment cleans up without positioning a screen cover")
+local ownershipSlot = C.Allocate()
+C.PlaceTracked(ownershipSlot, poolPlate, 40)
+SBeGone.track.nameplate1, SBeGone.trackSlots[ownershipSlot] = ownershipSlot, "nameplate2"
+setUnit("nameplate1", { name = "Forest Spider", famId = 3, level = 10 })
+setPlate(1, makePlate(100, 1))
+SBeGone.TrackTick()
+check(SBeGone.track.nameplate1 ~= ownershipSlot and C.pool[ownershipSlot].frame.parent == poolPlate,
+    "ownership: a recycled index cannot adopt another unit's native cover")
 SBeGone.ClearTrack()
-local keptPark = SBeGone.Cover.Allocate("park", 100, 100)
-SBeGone.Cover.Save()
-SBeGone.Tick()
-flushDisplay()
-check(SBeGone.Cover.ShownCount() == 2, "release setup: one manual shield and one tracked cover")
-capture(function() SlashCmdList["SPIDER"]("release") end)
-flushDisplay()
-check(SBeGone.Cover.ShownCount() == 1 and next(SBeGone.track) == nil
-    and SBeGone.Cover.IsAllocated(keptPark), "release: clears tracking while keeping manual shields")
-SBeGone.Tick()
-flushDisplay()
-check(SBeGone.Cover.ShownCount() == 2, "release: enabled tracking resumes on the next scan")
-out = capture(function() SlashCmdList["SPIDER"]("auto off") end)
-check(out[1]:find("retired") and SBeGoneSettings.enabled and SBeGoneSettings.autoTrack == nil,
-    "retired auto command: cannot select a pointer mode or disable tracking")
-
--- Tunables are settable from chat (the owner needs to tune drop/size live).
-capture(function() SlashCmdList["SPIDER"]("grow 2.5") end)
-check(SBeGoneSettings.trackScale == 2.5, "slash: /spider grow sets the plate-relative size")
-capture(function() SlashCmdList["SPIDER"]("drop 0.4") end)
-check(SBeGoneSettings.drop == 0.4, "slash: /spider drop sets the below-plate offset")
-capture(function() SlashCmdList["SPIDER"]("drop 99") end)
-check(SBeGoneSettings.drop == 4, "slash: drop clamped to the safe range")
-capture(function() SlashCmdList["SPIDER"]("size 120") end)
-check(SBeGoneSettings.coverSize == 120, "slash: /spider size sets the fixed cover size")
-
-
--- ---- recycled indices must not adopt another manual shield --------------
-SBeGone.Cover.ClearAll()
+local blocked = C.Allocate()
+C.PlaceTracked(blocked, poolPlate, 40)
+local blockedFrame, normalParent = C.pool[blocked].frame, C.pool[blocked].frame.SetParent
+blockedFrame.SetParent = function(self, parent)
+    if parent == UIParent then error("detach unavailable", 0) end
+    return normalParent(self, parent)
+end
+check(not C.Release(blocked) and C.pool[blocked].pendingRelease and not C.IsAllocated(blocked),
+    "cleanup: rejected detachment quarantines its hidden slot")
+check(C.Allocate() ~= blocked and blockedFrame.mouse == false and not blockedFrame:IsShown(),
+    "cleanup: blocked slots stay hidden and click-through rather than being reused")
+blockedFrame.SetParent = normalParent
+C.RetryReleases()
+check(not C.pool[blocked].pendingRelease and blockedFrame.parent == UIParent and blockedFrame.points[1] == nil,
+    "cleanup: an ordinary retry detaches and clears the stale native anchor")
+local freeBefore = #C.free
+C.Release(blocked)
+check(#C.free == freeBefore, "cleanup: repeated release cannot duplicate free indices")
 SBeGone.ClearTrack()
-local owned = SBeGone.Cover.Allocate("park", 300, 400)
+local blockedMethods = {}
+for _ = 1, C.MAX do
+    local index = C.Allocate()
+    C.PlaceTracked(index, poolPlate, 40)
+    local frame = C.pool[index].frame
+    blockedMethods[frame] = frame.SetParent
+    frame.SetParent = function(self, parent)
+        if parent == UIParent then error("restricted cleanup", 0) end
+        return blockedMethods[self](self, parent)
+    end
+    C.Release(index)
+end
+check(C.Allocate() == nil and #C.free == 0, "cleanup: fully blocked pool returns no slot and never bypasses restrictions")
+for frame, method in pairs(blockedMethods) do frame.SetParent = method end
+C.RetryReleases()
+check(#C.free == C.MAX, "cleanup: all quarantined slots recover when ordinary APIs permit detachment")
+SBeGone.ClearTrack()
+-- Churn beyond capacity: free-list identities and reverse ownership must stay sane.
+for index = 1, 36 do
+    setUnit("nameplate" .. index, { name = "Forest Spider", famId = 3, level = 10 })
+    setPlate(index, makePlate(100, 1))
+end
+for _ = 1, 20 do SBeGone.Tick() end
+flushDisplay()
+local count, sane = 0, true
+for token, slot in pairs(SBeGone.track) do
+    count = count + 1
+    if not C.IsAllocated(slot) or SBeGone.trackSlots[slot] ~= token then sane = false end
+end
+check(count == C.MAX and sane and #C.free == 0, "churn: full native pool keeps one matching owner per allocated slot")
+SBeGone.ClearTrack()
+for index = 1, 40 do setPlate(index, nil) end
 clearUnits()
-setUnit("player", { name = "TestWarrior", class = "Warrior" })
-setUnit("nameplate1", { name = "Forest Spider", level = 2, famId = 3, id = 1504 })
-SBeGone.track.nameplate1 = owned
-SBeGone.trackSlots[owned] = nil
-SBeGone.Tick()
-flushDisplay()
-check(SBeGone.track.nameplate1 and SBeGone.track.nameplate1 ~= owned,
-    "track: a recycled manual index is never adopted")
-check(SBeGone.Cover.KindOf(owned) == "park", "track: the manual shield keeps its own slot")
-check(not SBeGone.Cover.pool[owned].anchored, "track: a manual shield is not dragged onto a plate")
-
--- Arrange mode must never survive a session: a stale "true" in
--- SavedVariables would mean every cover eats clicks at login.
-SBeGoneSettings.arrange = true
-SBeGone.ready = false
-SBeGoneSettings.covers["Newbie"] = nil
-clearUnits()
-setUnit("player", { name = "Newbie", class = "Hunter" })
-SBeGone.OnEnterWorld()
-flushDisplay()
-check(SBeGoneSettings.arrange == false, "arrange: not carried across a session")
-local clickThrough = true
-for i = 1, SBeGone.Cover.MAX do
-	if SBeGone.Cover.pool[i].frame.mouse ~= false then clickThrough = false end
-end
-check(clickThrough, "arrange: a fresh session starts click-through (covers never eat clicks)")
-SBeGoneSettings.arrange = false
-
--- Invariant: after churn, no bookkeeping entry points at a slot we do not own.
-for _ = 1, SBeGone.Cover.MAX do SBeGone.Cover.Allocate("park", 5, 5) end
-SBeGone.Tick()
-local strays = 0
-for slot, token in pairs(SBeGone.trackSlots) do
-	if SBeGone.Cover.KindOf(slot) ~= "track" or SBeGone.track[token] ~= slot then
-		strays = strays + 1
-	end
-end
-check(strays == 0, "track: eviction drops entries instead of leaving strays")
-
-SBeGone.Cover.ClearAll()
-SBeGone.ClearTrack()
 
 -- ---- anchor refusal fails safe ------------------------------------------
 -- A refused SetPoint must never leave a frame with no anchor on screen, and a
@@ -1011,69 +737,6 @@ SBeGone.ClearTrack()
 setPlate(1, nil)
 clearUnits()
 
--- ---- eviction must not corrupt the allocation queue ----------------------
--- C.Save and C.Restore iterate Cover.queue: an index missing from the queue is
--- a cover that silently disappears after a relog. This path was broken while
--- writing the preferential-eviction test (the FIFO line survived pickEvict).
-local function queueIsSane()
-	local allocated = 0
-	for i = 1, SBeGone.Cover.MAX do
-		if SBeGone.Cover.pool[i].allocated then allocated = allocated + 1 end
-	end
-	if #SBeGone.Cover.queue ~= allocated then
-		return false, "queue length " .. #SBeGone.Cover.queue .. " ~= allocated " .. allocated
-	end
-	local seen = {}
-	for _, idx in ipairs(SBeGone.Cover.queue) do
-		if seen[idx] then return false, "duplicate index " .. tostring(idx) end
-		seen[idx] = true
-		local slot = SBeGone.Cover.pool[idx]
-		if not slot or not slot.allocated then return false, "queue holds an unallocated index" end
-	end
-	return true
-end
-local okQ, whyQ
-SBeGone.ClearTrack()
-SBeGone.Cover.ClearAll()
-for i = 1, 3 do
-	local idx = SBeGone.Cover.Allocate("park")
-	SBeGone.Cover.Place(idx, 100 + i * 40, 500)
-end
-flushDisplay()
-SBeGone.Cover.Save()
-check(savedCount(SBeGone.char) == 3, "queue: three parked shields saved before the churn")
-local parkedIdx = {}
-for _, idx in ipairs(SBeGone.Cover.queue) do
-	if SBeGone.Cover.KindOf(idx) == "park" then parkedIdx[idx] = true end
-end
-check(next(parkedIdx) ~= nil and (function()
-	local n = 0
-	for _ in pairs(parkedIdx) do n = n + 1 end
-	return n == 3
-end)(), "queue: all three parked shields are in the allocation queue")
--- more demand than the pool: forces MAX + 6 evictions
-for _ = 1, SBeGone.Cover.MAX + 6 do
-	SBeGone.Cover.Allocate("track", nil, nil, "track")
-end
-flushDisplay()
-okQ, whyQ = queueIsSane()
-check(okQ, "queue: eviction keeps the allocation queue exactly consistent"
-	.. (okQ and "" or (" (" .. tostring(whyQ) .. ")")))
-local parkedLeft = 0
-for idx in pairs(parkedIdx) do
-	if SBeGone.Cover.KindOf(idx) == "park" then parkedLeft = parkedLeft + 1 end
-end
-check(parkedLeft > 0, "queue: parked shields survive a full pool of tracked covers")
-local expect = 0
-for _, idx in ipairs(SBeGone.Cover.queue) do
-	local slot = SBeGone.Cover.pool[idx]
-	if not slot.anchored and type(slot.x) == "number" then expect = expect + 1 end
-end
-SBeGone.Cover.Save()
-check(savedCount(SBeGone.char) == expect,
-	"queue: Save writes exactly the positioned, unanchored covers (no losers)")
-SBeGone.Cover.ClearAll()
-
 -- ---- Forever restrictions and Classic-only baseline ----------------------
 local countIDs = 0
 for _ in pairs(SBeGone.DB.ids) do countIDs = countIDs + 1 end
@@ -1090,7 +753,6 @@ check(SBeGone.DB.ids[15952] and SBeGone.DB.ids[16698],
 	"classic data: original Naxxramas creatures are retained without an arbitrary numeric ID cutoff")
 
 SBeGone.autoSuspended = false
-SBeGoneSettings.arrange = false
 SBeGone.Cover.ClearAll()
 SBeGone.ClearTrack()
 clearUnits()
@@ -1154,210 +816,34 @@ check(SBeGone.Cover.pool[safeSlot].frame.mouse == false,
 	"access: a tracked cover always has mouse input explicitly disabled")
 safePlate.GetWidth, safePlate.GetEffectiveScale = realWidth, realScale
 
-local pendingFrame = SBeGone.Cover.pool[safeSlot].frame
-local parentMethod = pendingFrame.SetParent
-pendingFrame.SetParent = function(self, parent)
-	if parent == UIParent then error("detach blocked in this context", 0) end
-	return parentMethod(self, parent)
-end
-check(not SBeGone.Cover.Release(safeSlot), "cleanup: rejected detachment is reported")
-local pending = SBeGone.Cover.pool[safeSlot]
-check(pending.pendingRelease and pending.anchored and not pending.allocated,
-	"cleanup: blocked plate children remain marked attached and unavailable for reuse")
-check(pcall(SBeGone.Cover.SyncDrags), "cleanup: blocked children are never measured as screen covers")
-SBeGone.Cover.Save()
-check(savedCount(SBeGone.char) == 0, "cleanup: deferred children are not persisted")
-local differentSlot = SBeGone.Cover.Allocate("park", 100, 200)
-check(differentSlot ~= safeSlot, "cleanup: another cover cannot adopt a blocked plate child")
-SBeGoneSettings.arrange = true
-SBeGone.Cover.ApplyInteractivity()
-check(pendingFrame.mouse == false, "cleanup: arrange mode keeps blocked plate children click-through")
-SBeGoneSettings.arrange = false
-pendingFrame.SetParent = parentMethod
-SBeGone.Cover.RetryReleases()
-check(not pending.pendingRelease and not pending.anchored and pendingFrame:GetParent() == UIParent,
-	"cleanup: ordinary API retry releases a deferred child when the client permits it")
-local freeBefore = #SBeGone.Cover.free
-SBeGone.Cover.Release(safeSlot)
-check(#SBeGone.Cover.free == freeBefore, "cleanup: repeated release cannot duplicate free pool indices")
-SBeGone.Cover.ClearAll()
+-- ---- native events and paused-coverage recovery -------------------------
 SBeGone.ClearTrack()
-SBeGone.Cover.ApplyInteractivity()
-
--- Both old global event arguments and the timer fallback remain supported.
+SBeGone.autoSuspended = false
+clearUnits()
+setUnit("player", { name = "EventTester", player = true })
+setUnit("nameplate1", { name = "Forest Spider", famId = 3, level = 10 })
+setPlate(1, makePlate(100, 1))
 event, arg1 = "NAME_PLATE_UNIT_ADDED", "nameplate1"
 SBeGone.eventFrame.scripts.OnEvent()
 local eventSlot = SBeGone.track.nameplate1
-check(eventSlot ~= nil, "events: a plate-added event attaches a cover before the next scan")
+check(eventSlot ~= nil, "events: native plate addition attaches before the next timer scan")
 event = "NAME_PLATE_UNIT_REMOVED"
 SBeGone.eventFrame.scripts.OnEvent()
-check(SBeGone.track.nameplate1 == nil and not SBeGone.Cover.IsAllocated(eventSlot),
-	"events: a plate-removed event releases its cover immediately")
+check(SBeGone.track.nameplate1 == nil and not C.IsAllocated(eventSlot), "events: native plate removal releases immediately")
 event, arg1 = nil, nil
-
 local originalUpdate = SBeGone.Update
-SBeGone.Update = function() error("unexpected restricted action", 0) end
+SBeGone.Update = function() error("normal operation rejected", 0) end
 capture(function() for _ = 1, 4 do SBeGone.Tick() end end)
 SBeGone.Update = originalUpdate
-SBeGone.Tick()
-check(SBeGone.autoSuspended and SBeGoneSettings.enabled and legacyReads == 0,
-    "errors: repeated failures pause tracking without querying pointer input")
+check(SBeGone.autoSuspended and SBeGoneSettings.enabled and C.ShownCount() == 0,
+    "errors: repeated failures pause and release covers")
 capture(function() SBeGone.Slash("enable") end)
 check(not SBeGone.autoSuspended and SBeGone.track.nameplate1 ~= nil,
-    "errors: enable clears suspension and immediately retries native tracking")
-
--- All pool slots may be temporarily unavailable in a restricted context.
--- Restoring must preserve the saved layout and finish once cleanup is legal.
-SBeGone.Cover.ClearAll()
-SBeGone.ClearTrack()
-local blockedFrames = {}
-for _ = 1, SBeGone.Cover.MAX do
-	local index = SBeGone.Cover.AllocateUnpositioned("track", "track")
-	SBeGone.Cover.PlaceTracked(index, safePlate, 50)
-	local frame = SBeGone.Cover.pool[index].frame
-	blockedFrames[frame] = frame.SetParent
-	frame.SetParent = function(self, parent)
-		if parent == UIParent then error("cleanup unavailable", 0) end
-		return blockedFrames[self](self, parent)
-	end
-	SBeGone.Cover.Release(index)
-end
-check(#SBeGone.Cover.free == 0, "cleanup: fully blocked pool has no reusable slots")
-check(SBeGone.Cover.Allocate("park", 50, 60) == nil,
-	"cleanup: exhausted blocked pool returns no cover instead of reusing a restricted frame")
-local restoreCharacter = SBeGone.char
-SBeGoneSettings.covers[restoreCharacter] = {
-	init = true, list = { { x = 90, y = 120, w = 80, h = 80, kind = "park" } },
-}
-local restoreOK, restoreResult = pcall(SBeGone.Cover.Restore, restoreCharacter)
-check(restoreOK and restoreResult == false and SBeGone.Cover.deferredRestore == restoreCharacter,
-	"cleanup: a layout restore defers safely when all slots are blocked")
-SBeGone.Cover.Save()
-check(savedCount(restoreCharacter) == 1,
-	"cleanup: deferred restore cannot erase the existing saved layout")
-for frame, method in pairs(blockedFrames) do frame.SetParent = method end
-SBeGone.Cover.RetryReleases()
-flushDisplay()
-check(SBeGone.Cover.deferredRestore == nil and SBeGone.Cover.ShownCount() == 1,
-	"cleanup: saved layout restores automatically after normal detachment is permitted")
-check(savedCount(restoreCharacter) == 1 and findCover(90, 120) ~= nil,
-	"cleanup: restored coordinates and persistence survive complete pool exhaustion")
+    "errors: explicit enable retries through normal native APIs")
 C_NamePlate, C_Secrets, issecretvalue, canaccessvalue = nil, nil, nil, nil
-clearUnits()
-setPlate(1, nil)
-SBeGone.Cover.ClearAll()
 SBeGone.ClearTrack()
-
--- ---- late SavedVariables migration and a fresh tracking-only install -----
-SBeGoneSettings = { enabled = false, autoTrack = false, stickyCovers = true, parkCount = 2,
-    covers = {
-        Legacy = { init = true, list = {
-            { x = 1, y = 2, kind = "hover" },
-            { x = 90, y = 120, w = 80, h = 80, kind = "park" },
-            { x = 3, y = 4 },
-        } },
-        OtherLegacy = { { x = 5, y = 6, kind = "hover" } },
-        Unfinished = { init = false, list = {} },
-    },
-}
-SBeGone.ready = false
-SBeGone.loadSnapshot.settingsPresent = false
-SBeGone.sawVariablesLoaded = false
-setUnit("player", { name = "Legacy", player = true })
-setUnit("nameplate1", { name = "Forest Spider", level = 2, famId = 3, id = 1504 })
-setPlate(1, makePlate(100, 1))
-event = "VARIABLES_LOADED"
-SBeGone.eventFrame.scripts.OnEvent()
-event = nil
-flushDisplay()
-check(SBeGoneSettings.version == 3 and SBeGoneSettings.autoTrack == nil
-    and SBeGoneSettings.stickyCovers == nil, "migration: late-loaded retired mode settings are removed")
-check(not SBeGoneSettings.enabled and SBeGone.Cover.ShownCount() == 0,
-    "migration: disabled users stay disabled through settings migration")
-check(savedCount("Legacy") == 1 and savedCount("OtherLegacy") == 0,
-    "migration: retired cursor records removed across all characters")
-check(SBeGoneSettings.covers.Legacy.list[1].kind == "park"
-    and SBeGoneSettings.covers.Legacy.list[1].w == 80,
-    "migration: explicit manual positions and sizes are preserved")
-check(SBeGoneSettings.covers.Unfinished.init == false,
-    "migration: migrating another character does not mark an unfinished layout initialized")
-capture(function() SBeGone.Slash("enable") end)
-flushDisplay()
-check(SBeGone.track.nameplate1 ~= nil and SBeGone.Cover.ShownCount() == 2,
-    "migration: a former auto-off installation enables native tracking and its manual shield")
-SBeGoneSettings.enabled = true
-SBeGoneSettings.autoTrack = false
-SBeGone.ready = false
-SBeGone.OnEnterWorld()
-SBeGone.Tick()
-check(SBeGone.track.nameplate1 ~= nil and SBeGoneSettings.autoTrack == nil,
-    "migration: an already-enabled auto-off installation tracks without an extra command")
-SBeGone.ready = false
-setUnit("player", { name = "Unfinished", player = true })
-SBeGone.OnEnterWorld()
-flushDisplay()
-check(savedCount("Unfinished") == 2 and SBeGone.Cover.ShownCount() == 2,
-    "migration: an unfinished character still receives its configured manual shields")
-
-SBeGoneSettings = {}
-SBeGone.ready = false
-setUnit("player", { name = "FreshTracking", player = true })
-SBeGone.OnEnterWorld()
-SBeGone.Tick()
-flushDisplay()
-check(SBeGoneSettings.enabled == true and SBeGoneSettings.parkCount == 0
-    and SBeGone.track.nameplate1 ~= nil and SBeGone.Cover.ShownCount() == 1,
-    "defaults: enabled tracking needs no pointer input, command or pre-parked covers")
-check(legacyReads == 0, "tracking only: no unit API or cursor read used pointer input anywhere in the suite")
-
--- ---- Stale SavedVariables are re-migrated at the restore point ----------
--- Owner report 2026-10-16 (selftest: auto=nil with clearly visible spiders):
--- the client applies SavedVariables by REPLACING the whole settings table,
--- possibly after the scripts ran, and a save written before M3.5 has no
--- trackScale/drop/trackRelease keys at all (and still carries the retired
--- stickyCovers flag). The script-load migration is gone with the replaced
--- table, so tracking would run with nil settings. The migration must run
--- again at the restore point: fill missing keys, remove retired flags,
--- migrate the saved lists.
 clearUnits()
-SBeGone.ready = false
-SBeGone.char = nil
-SBeGone.sawVariablesLoaded = true
-SBeGone.loadSnapshot.settingsPresent = true
-local staleCovers = SBeGoneSettings.covers
-staleCovers["StaleMarker"] = {
-	init = true,
-	list = { { x = 10, y = 20, w = 80, h = 80, kind = "park" } },
-}
-SBeGoneSettings = {
-	version = 2, stickyCovers = true,
-	color = { 0.55, 0.12, 0.12 }, opacity = 0.85, coverSize = 96,
-	parkCount = 8, namePatterns = {}, extraNames = {},
-	requireHostile = false, minLevel = 1, maxLevel = 99,
-	covers = staleCovers,
-}
-setUnit("player", { name = "StaleMerge", class = "Warrior" })
-SBeGone.OnEnterWorld()
-check(SBeGone.ready and SBeGone.char == "StaleMerge",
-	"settings: restore proceeds on a stale pre-M3.5 save")
-check(SBeGoneSettings.enabled == true,
-	"settings: stale save migrated — tracking enabled by default (was absent)")
-check(SBeGoneSettings.autoTrack == nil and SBeGoneSettings.stickyCovers == nil,
-	"settings: stale save migrated — retired mode flags removed (schema 3)")
-check(SBeGoneSettings.trackScale == 1.6,
-	"settings: stale save re-merged — trackScale default restored")
-check(SBeGoneSettings.nearThreshold == 0 and SBeGoneSettings.nearBoost == 2.6,
-	"settings: stale save re-merged — near-field defaults restored (boost off)")
-check(SBeGoneSettings.drop == 0.5,
-	"settings: stale save re-merged — drop default restored (2026-10-16 calibration)")
-check(SBeGoneSettings.parkCount == 8,
-	"settings: stale save re-merged — valid user value kept, not reset")
-check(SBeGoneSettings.arrange == false,
-	"settings: stale save re-merged — arrange default restored")
-check(SBeGoneSettings.covers == staleCovers
-	and type(SBeGoneSettings.covers["StaleMarker"]) == "table"
-	and #SBeGoneSettings.covers["StaleMarker"].list == 1,
-	"settings: merge fills keys in place, keeping the saved per-character lists")
+for index = 1, 40 do setPlate(index, nil) end
 
 -- ---- centered automatic corpse warnings ---------------------------------
 local W = SBeGone.DeathWarning
@@ -1367,7 +853,7 @@ GetTime = function() return warningTime end
 C_Timer.After = function(delay, callback)
     warningTimers[#warningTimers + 1] = { delay = delay, callback = callback }
 end
-SBeGoneSettings.enabled, SBeGoneSettings.arrange = true, false
+SBeGoneSettings.enabled = true
 SBeGone.hidden, SBeGone.autoSuspended = nil, false
 SBeGone.Cover.ClearAll()
 SBeGone.ClearTrack()
@@ -1575,7 +1061,8 @@ end
 -- Changing appearance updates both allocated and spare frames in place.
 SBeGoneSettings.enabled = true
 C.ClearAll()
-local appearanceSlot = C.Allocate("park", 250, 300)
+local appearanceSlot = C.Allocate()
+C.PlaceTracked(appearanceSlot, makePlate(100, 1), 40)
 flushDisplay()
 local beforeFrame, beforeParent = C.pool[appearanceSlot].frame, C.pool[appearanceSlot].frame.parent
 for _, preset in ipairs(P.PRESETS) do
@@ -1613,12 +1100,12 @@ SBeGone.OnEnterWorld()
 check(P.Current().id == "custom" and C.pool[1].art.texture[1] == customPath,
     "appearance: saved custom choice survives settings migration and character restore")
 C.ClearAll()
-local trackedStyleSlot = C.AllocateUnpositioned("track", "track")
+local trackedStyleSlot = C.Allocate()
 local trackedStylePlate = makePlate(100, 1)
 C.PlaceTracked(trackedStyleSlot, trackedStylePlate, 40)
 capture(function() SBeGone.Slash("cover blue") end)
 check(C.pool[trackedStyleSlot].frame.parent == trackedStylePlate
-    and C.pool[trackedStyleSlot].anchored and C.KindOf(trackedStyleSlot) == "track"
+    and C.pool[trackedStyleSlot].anchored and C.IsAllocated(trackedStyleSlot)
     and C.pool[trackedStyleSlot].frame.mouse == false,
     "appearance: live style changes preserve native tracking attachment and click-through")
 local originalBaseTexture = C.pool[trackedStyleSlot].base.SetTexture
@@ -1638,9 +1125,9 @@ C.ApplyStyle()
 check(C.textureFailed and C.pool[appearanceSlot].art.texture[1] == C.ART_PATH,
     "appearance: a rejected texture call cannot interrupt covers")
 __throwTexture = nil
-C.Restore(SBeGone.char)
+C.ApplyStyle()
 check(C.pool[1].art.texture[1] == customPath,
-    "appearance: restoring an initialized pool repaints the saved choice")
+    "appearance: repainting an initialized pool retains the saved choice")
 
 capture(function() SBeGone.Slash("disable") end)
 capture(function() SBeGone.Slash("cover blue") end)
@@ -1687,6 +1174,23 @@ check(P.Current().id == "sage" and C.ShownCount() == 0,
     "config: command selection still works after a window API failure")
 check(legacyReads == 0, "appearance: configuration never queries mouseover or the cursor")
 
+-- Every cover, including recycled and quarantined frames, must have NEVER
+-- received EnableMouse(true), not merely be click-through at the end.
+local neverInteractive = true
+for _, slot in ipairs(SBeGone.Cover.pool) do
+    for _, on in ipairs(slot.frame.mouseHistory or {}) do if on then neverInteractive = false end end
+end
+check(neverInteractive and movementCalls == 0, "input: no cover ever accepts clicks or invokes client movement APIs")
+check(legacyReads == 0, "input: no cursor or mouseover queries exist in any automatic path")
+local coverSourceFile = assert(io.open("SpidersBeGone/Cover.lua", "rb"))
+local coverSource = coverSourceFile:read("*a")
+coverSourceFile:close()
+local prohibitedAPI = false
+for _, name in ipairs({ "SetMovable", "StartMoving", "StopMovingOrSizing", "RegisterForDrag",
+    "OnDragStart", "OnDragStop", "GetPoint", "GetCenter", "GetRect" }) do
+    if coverSource:find(name, 1, true) then prohibitedAPI = true end
+end
+check(not prohibitedAPI, "input: packaged cover source contains no movement, drag or screen-measurement API")
 if fails > 0 then
 	error(fails .. " test(s) FAILED", 0)
 end

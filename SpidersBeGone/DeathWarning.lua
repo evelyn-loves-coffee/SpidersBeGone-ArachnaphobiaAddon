@@ -9,7 +9,7 @@ W.generation = 0
 
 local function running()
 	return SBeGone.ready and SBeGoneSettings and SBeGoneSettings.enabled
-		and not SBeGoneSettings.arrange and not SBeGone.hidden and not SBeGone.autoSuspended
+		and not SBeGone.hidden and not SBeGone.autoSuspended
 end
 
 local function now()

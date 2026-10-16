@@ -7,6 +7,7 @@ from zipfile import ZipFile, ZIP_DEFLATED
 import hashlib
 import os
 import re
+import shutil
 
 from lupa.lua51 import LuaRuntime
 
@@ -37,15 +38,20 @@ def main():
             archive.write(source, "SpidersBeGone/" + source.relative_to(addon).as_posix())
         archive.write(root / "README.md", "SpidersBeGone/README.md")
         archive.write(root / "LICENSE", "SpidersBeGone/LICENSE.txt")
-        for source in sorted((root / "docs").rglob("*.md")):
+        # Ship current controls only; archived plans advertise removed features.
+        for name in ("HANDOFF.md", "TRACKING-ONLY.md", "COVER-IMAGES.md", "CORPSE-HANDLING.md", "DATA-SOURCES.md"):
+            source = root / "docs" / name
             archive.write(source, "SpidersBeGone/" + source.relative_to(root).as_posix())
         for name in ("config_preview.png", "cover_choices.png"):
             source = root / "docs" / "art" / name
             archive.write(source, "SpidersBeGone/docs/art/" + name)
 
     review = root / "dist" / f"install-check-{version}"
-    review.mkdir(parents=True, exist_ok=True)
     assert review.resolve().is_relative_to(root.resolve())
+    assert review.parent.resolve() == (root / "dist").resolve()
+    if review.exists():
+        shutil.rmtree(review)  # only this generated, validated review directory
+    review.mkdir(parents=True)
     with ZipFile(output) as archive:
         assert archive.testzip() is None
         for name in archive.namelist():

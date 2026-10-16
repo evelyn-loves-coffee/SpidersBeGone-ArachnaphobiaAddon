@@ -1,3 +1,5 @@
+> Historical reference only. v0.3.1 removed screen-positioned covers and all editing/input modes. Follow [HANDOFF.md](HANDOFF.md) for the current implementation and test machine. This file is not shipped in the addon ZIP.
+
 # API verification record — WoW Forever 1.60.1
 
 M1 exit criteria. Compiled 2026-10-13 from in-client probe rounds SBG1–SBG4

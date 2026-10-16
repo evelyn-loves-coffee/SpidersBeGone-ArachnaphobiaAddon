@@ -1,3 +1,5 @@
+> Historical reference only. v0.3.1 removed screen-positioned covers and all editing/input modes. Follow [HANDOFF.md](HANDOFF.md) for the current implementation and test machine. This file is not shipped in the addon ZIP.
+
 # Spiders Be Gone — Arachnaphobia Addon
 
 **Historical design and probe log.** Current behavior is documented in
