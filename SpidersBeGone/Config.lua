@@ -182,7 +182,7 @@ function O.Open()
 		if O.frame then pcall(O.frame.Hide, O.frame) end
 		O.frame, O.creating, O.unavailable = nil, nil, true
 	end
-	print("SBG| Cover window unavailable on this client - choose with /spider cover <choice>")
+	print("SBG| Cover window unavailable on this client - choose with /sbg cover <choice>")
 	P.Command("")
 	return false
 end

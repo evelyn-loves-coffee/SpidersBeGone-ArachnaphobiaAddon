@@ -88,8 +88,8 @@ end
 function P.Command(args)
 	local id, path = (args or ""):match("^%s*(%S+)%s*(.-)%s*$")
 	if not id then
-		print("SBG| Cover: " .. P.Current().label .. " - /spider config to choose")
-		print("SBG| /spider cover fox / red / blue / sage / charcoal / custom <local .tga path>")
+		print("SBG| Cover: " .. P.Current().label .. " - /sbg config to choose")
+		print("SBG| /sbg cover fox / red / blue / sage / charcoal / custom <local .tga path>")
 		return
 	end
 	local ok, message = P.Select(id, path ~= "" and path or nil)

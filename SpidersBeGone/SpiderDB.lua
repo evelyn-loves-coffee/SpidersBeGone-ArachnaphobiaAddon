@@ -16,8 +16,8 @@ Why IDs are the PRIMARY signal (docs/PLAN.md detection):
     will not report (and for spiders added to the game after this list).
 
 Detection order in Units.lua: id hit -> creature family -> name fragment.
-Zone comments are kept on purpose: they are the provenance of each entry and
-they power the zone hints (/spider where) once GetZoneText is SBG-verified.
+Zone comments record the provenance of each entry. Nameplate tracking does
+not require a zone database or a separate zone-warning command.
 --]]
 
 SBeGone = SBeGone or {}

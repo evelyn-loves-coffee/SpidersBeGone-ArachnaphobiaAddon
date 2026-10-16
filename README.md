@@ -4,7 +4,7 @@ Addon for **World of Warcraft Forever** (classic 1.x-line client, v1.60.1) that
 covers spider models with a nameplate-attached UI element. UI-layer only: no model
 swaps, no game-file modification.
 
-**Status: v0.3.2 — core tracking verified in game 2026-10-16 (Tirisfal);
+**Status: v0.3.3 — core tracking verified in game 2026-10-16 (Tirisfal);
 automatic nameplate covers, image choices and a bounded 80-100% opacity
 slider. The fox, simple backgrounds, custom images and brief corpse warning remain. The new build passes offline
 checks; live validation belongs on the partner's test machine.**
@@ -36,9 +36,9 @@ for the historical design and client-probe records.
 Extract the fixed ZIP and replace the `SpidersBeGone/` folder in your client's
 `Interface/AddOns/` directory, then log in or `/reload`. The `.toc` must be at
 `Interface/AddOns/SpidersBeGone/SpidersBeGone.toc`, without an extra nested
-repository folder. `/spider` should report **v0.3.2**.
+repository folder. `/sbg` should report **v0.3.3**.
 
-Choose your cover with **`/spider config`**. The default is the supplied fox
+Choose your cover with **`/sbg config`**. The default is the supplied fox
 illustration; alternatives are muted red, blue and sage squircles, plain
 charcoal, or your own local image. Choices update existing covers immediately
 and save automatically. The picker also has an **opacity slider from 80% to
@@ -48,10 +48,10 @@ and custom-image preparation. Tracking stays click-through and requires no
 mouseover; the 1.75-second corpse warning is unchanged.
 
 Enable enemy nameplates in the game. The addon starts enabled on a new install;
-`/spider enable` also enables tracking immediately and retries paused coverage.
-`/spider disable` stops tracking and hides every cover.
-No mouseover or separate auto command is needed. Tune coverage with `/spider grow 2`
-and `/spider drop 0.5` as needed.
+`/sbg enable` also enables tracking immediately and retries paused coverage.
+`/sbg disable` stops tracking and hides every cover.
+No mouseover or separate auto command is needed. Tune coverage with `/sbg grow 2`
+and `/sbg drop 0.5` as needed.
 
 The cover follows the visible nameplate. Stacking or screen-edge clamping by
 the game can move a nameplate away from the model; this client exposes no usable
@@ -63,10 +63,10 @@ band while the model keeps growing as the camera approaches, so a
 plate-proportional cover under-covers close spiders (legs showing). True
 camera distance is unmeasurable on this client (every position API is
 absent), so the boost is not graded by distance: when a plate's apparent
-width reaches `/spider near`'s threshold, its cover is multiplied by the
-near-field boost (default `2.6`). Calibrate once: `/spider debug on`, walk
+width reaches `/sbg near`'s threshold, its cover is multiplied by the
+near-field boost (default `2.6`). Calibrate once: `/sbg debug on`, walk
 from far to close at a spider, read the `SBG| near:` line, then
-`/spider near <N>` (default `0` = off).
+`/sbg near <N>` (default `0` = off).
 
 **Known limitation:** when the camera is very close, the client clamps the
 nameplate itself (edge/stacking), the cover follows the plate, and no
@@ -80,13 +80,13 @@ cover or track the body. Deaths not observed through accessible unit data or
 a recent readable death event can be missed. NoSpider uses a mouseover warning
 for this case; see [docs/CORPSE-HANDLING.md](docs/CORPSE-HANDLING.md) for our
 automatic implementation and its limits.
-`/spider` reports `limited=true` when a checked value/frame is inaccessible,
-and `paused=true` after repeated failures. `/spider enable` explicitly retries
+`/sbg` reports `limited=true` when a checked value/frame is inaccessible,
+and `paused=true` after repeated failures. `/sbg enable` explicitly retries
 automatic covers. See [docs/TRACKING-ONLY.md](docs/TRACKING-ONLY.md) for controls
 and upgrade behavior, and [the native attachment record](https://github.com/evelyn-loves-coffee/SpidersBeGone-ArachnaphobiaAddon/blob/main/docs/NATIVE-OVERLAYS.md) for
 the native attachment implementation.
 
-`/spider disable` also dismisses the corpse warning and clears its observation
+`/sbg disable` also dismisses the corpse warning and clears its observation
 history. The timer and subsequent deaths cannot redisplay it while disabled.
 `corpsePopup=unavailable` in diagnostics means the popup text API failed; a chat
 warning is used instead so tracking can continue.
@@ -128,24 +128,24 @@ review and Classic filtering rules are in [docs/DATA-SOURCES.md](docs/DATA-SOURC
 
 | Command | Effect |
 | :-- | :-- |
-| `/spider` | diagnostics: version, build, enabled, tracking, covers shown, limited / paused |
-| `/spider config` | open the cover picker with preview, presets and custom-image path |
-| `/spider opacity [0.8-1]` | report or set bounded cover opacity; also available in the picker |
-| `/spider cover <choice>` | select `fox`, `red`, `blue`, `sage`, `charcoal`, or `custom <local .tga path>` |
-| `/spider enable` | enable tracking and retry paused coverage; enabled by default |
-| `/spider disable` | stop tracking and hide every cover; stays disabled after reload |
-| `/spider toggle` | switch between enabled tracking and disabled covers |
-| `/spider grow [N]` | how much bigger than the nameplate a cover is (`0.2`–`6`, default `1.6`) |
-| `/spider drop [N]` | how far below the nameplate it sits (`0`–`4`, default `0.5` — calibrated in game 2026-10-16) |
-| `/spider near [N]` | near-field boost: plate apparent width (`UI` px) at/above which the tracked cover gets the ×`2.6` boost (`0`–`1000`, default `0` = off) |
-| `/spider size [N]` | fallback cover size in UI units (`16`–`512`) when plate geometry is unavailable |
-| `/spider name <name>` | "cover this one too": add an **exact** creature name (spaces allowed) |
-| `/spider names` | list the names you added |
-| `/spider forget <name>` | remove one you added |
-| `/spider debug [on\|off]` | verbose decisions for bug reports (off by default) |
-| `/spider help` | usage |
+| `/sbg` | diagnostics: version, build, enabled, tracking, covers shown, limited / paused |
+| `/sbg config` | open the cover picker with preview, presets and custom-image path |
+| `/sbg opacity [0.8-1]` | report or set bounded cover opacity; also available in the picker |
+| `/sbg cover <choice>` | select `fox`, `red`, `blue`, `sage`, `charcoal`, or `custom <local .tga path>` |
+| `/sbg enable` | enable tracking and retry paused coverage; enabled by default |
+| `/sbg disable` | stop tracking and hide every cover; stays disabled after reload |
+| `/sbg toggle` | switch between enabled tracking and disabled covers |
+| `/sbg grow [N]` | how much bigger than the nameplate a cover is (`0.2`–`6`, default `1.6`) |
+| `/sbg drop [N]` | how far below the nameplate it sits (`0`–`4`, default `0.5` — calibrated in game 2026-10-16) |
+| `/sbg near [N]` | near-field boost: plate apparent width (`UI` px) at/above which the tracked cover gets the ×`2.6` boost (`0`–`1000`, default `0` = off) |
+| `/sbg size [N]` | fallback cover size in UI units (`16`–`512`) when plate geometry is unavailable |
+| `/sbg name <name>` | "cover this one too": add an **exact** creature name (spaces allowed) |
+| `/sbg names` | list the names you added |
+| `/sbg forget <name>` | remove one you added |
+| `/sbg debug [on\|off]` | verbose decisions for bug reports (off by default) |
+| `/sbg help` | usage |
 
-`/spider on` and `/spider off` remain compatibility aliases for enable/disable.
+`/sbg on` and `/sbg off` remain compatibility aliases for enable/disable.
 
 **Upgrade from before v0.3.1:** old screen-cover layouts and editing modes are deleted
 for every character, including settings loaded late by the client. The
@@ -173,9 +173,9 @@ confirmation there.
 3. **Name fragments** (`spider`, `weaver`, `widow`, `skitter`, `tarantula`, …,
    case-insensitive) — last resort for units that report neither.
 
-Spotted a spider that none of the three caught? `/spider name <exact name>` adds
-it permanently (per character, saved in SavedVariables); `/spider names` and
-`/spider forget <name>` manage the list. Extra fragments can be added in
+Spotted a spider that none of the three caught? `/sbg name <exact name>` adds
+it permanently (per character, saved in SavedVariables); `/sbg names` and
+`/sbg forget <name>` manage the list. Extra fragments can be added in
 `SBeGoneSettings.namePatterns` — those are *added to* the built-in set, never a
 replacement.
 

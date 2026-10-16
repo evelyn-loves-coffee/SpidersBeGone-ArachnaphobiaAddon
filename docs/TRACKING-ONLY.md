@@ -1,4 +1,4 @@
-# v0.3.2: automatic nameplate covers only
+# v0.3.3: automatic nameplate covers only
 
 The addon attaches its own click-through covers to accessible spider
 nameplates. No targeting, mouseover or pointer input is required. Every
@@ -7,12 +7,12 @@ attachment, reuse, failed cleanup and removal.
 
 ## Normal controls
 
-- `/spider enable`: enable tracking and retry paused coverage. Enabled by default.
-- `/spider disable`: release and hide covers; stays disabled after reload.
-- `/spider config`: explicitly open the image picker, with presets and a custom path.
-- `/spider cover <choice>`: choose an image through chat commands.
-- `/spider opacity 0.8-1`: set the same bounded opacity offered in the picker.
-- `/spider`: show status and diagnostics. `/spider help` lists supported commands.
+- `/sbg enable`: enable tracking and retry paused coverage. Enabled by default.
+- `/sbg disable`: release and hide covers; stays disabled after reload.
+- `/sbg config`: explicitly open the image picker, with presets and a custom path.
+- `/sbg cover <choice>`: choose an image through chat commands.
+- `/sbg opacity 0.8-1`: set the same bounded opacity offered in the picker.
+- `/sbg`: show status and diagnostics. `/sbg help` lists supported commands.
 
 `on`, `off` and `toggle` remain compatibility aliases. Coverage calibration
 (`grow`, `drop`, `near`, fallback `size`), extra creature names and debug logging
@@ -46,7 +46,7 @@ successful installation or native input behavior there.
 
 The reported stuck-cursor incident survived `/reload`. Fully exit the game
 before replacing `Interface/AddOns/SpidersBeGone/` with this version, then
-restart and confirm bare `/spider` reports v0.3.2. Existing supported settings
+restart and confirm bare `/sbg` reports v0.3.3. Existing supported settings
 can remain in place; migration deletes the old layout automatically.
 
 1. Log in away from spiders: no leftover cover should appear, and mouse and

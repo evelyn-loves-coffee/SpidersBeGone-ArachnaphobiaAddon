@@ -94,4 +94,4 @@ Live acceptance is still required: kill a tracked spider with the pointer
 elsewhere; verify the centered warning lasts 1.5 to 2 seconds even when its
 plate disappears. Kill two spiders in quick succession, test disable while
 the warning is visible, and confirm clicks and movement pass through it.
-Use `/spider` to inspect `corpsePopup` if no visual warning appears.
+Use `/sbg` to inspect `corpsePopup` if no visual warning appears.

@@ -1,6 +1,6 @@
-# Choose your cover image (v0.3.2)
+# Choose your cover image (v0.3.3)
 
-Run `/spider config` to open the cover picker. Click a preset to preview it
+Run `/sbg config` to open the cover picker. Click a preset to preview it
 and update every cover immediately. The choice is saved in addon settings
 and survives reloads; the fox is the default for new or migrated settings.
 The window appears only when requested. Close it to return to play.
@@ -16,11 +16,11 @@ the addon is disabled keeps it disabled. Tracking, cover sizing and the
 
 | Choice | Appearance | Command |
 | --- | --- | --- |
-| Fox | Supplied illustration, original colors, fitted in proportion | `/spider cover fox` |
-| Muted red | Red squircle, similar in spirit to the previous cover | `/spider cover red` |
-| Muted blue | Plain blue squircle | `/spider cover blue` |
-| Sage green | Plain green squircle | `/spider cover sage` |
-| Plain charcoal | Uniform dark grey square | `/spider cover charcoal` |
+| Fox | Supplied illustration, original colors, fitted in proportion | `/sbg cover fox` |
+| Muted red | Red squircle, similar in spirit to the previous cover | `/sbg cover red` |
+| Muted blue | Plain blue squircle | `/sbg cover blue` |
+| Sage green | Plain green squircle | `/sbg cover sage` |
+| Plain charcoal | Uniform dark grey square | `/sbg cover charcoal` |
 
 For simple backgrounds, these are starting suggestions to try according to
 personal preference. They have no animation, patterns or spider imagery.
@@ -29,7 +29,7 @@ shapes sit on a solid dark blue backing. Picture colors are preserved.
 Opacity defaults to 100%; at lower settings the scene can show through. Models can still extend beyond an undersized or
 misaligned cover; the nameplate-tracking limitations still apply.
 
-`/spider cover` lists choices and the selected image. `/spider options` is
+`/sbg cover` lists choices and the selected image. `/sbg options` is
 an alias for the picker. If this client's window APIs reject the panel,
 the addon prints command-based instructions and tracking continues.
 
@@ -39,7 +39,7 @@ Offline layout preview (client fonts/rendering may differ):
 
 ## Opacity
 
-The slider in `/spider config` runs only from **80% to 100%**, with 1% steps.
+The slider in `/sbg config` runs only from **80% to 100%**, with 1% steps.
 The default is **100% (fully opaque)**. Changes update the checkerboard preview
 and existing covers immediately, save automatically and survive reloads.
 Choosing a different image preserves opacity; adjusting opacity does not
@@ -53,8 +53,8 @@ values above 100% clamp to 100%. The editor and corpse warning are not faded.
 Custom images retain a backing and may appear more opaque than the selected
 value, protecting areas where an image contains transparent pixels.
 
-Command fallback: `/spider opacity 0.8` or `/spider opacity 1`; bare
-`/spider opacity` reports the current value. If the client rejects native
+Command fallback: `/sbg opacity 0.8` or `/sbg opacity 1`; bare
+`/sbg opacity` reports the current value. If the client rejects native
 Slider APIs, the picker keeps working with 80/85/90/95/100% buttons. Covers
 remain permanently click-through; only the explicit configuration window
 accepts slider input. Native slider rendering still needs partner validation.
@@ -71,11 +71,11 @@ Then paste its game-relative path into the picker and click **Use image**,
 or enter:
 
 ```text
-/spider cover custom Interface\AddOns\MyCovers\flower.tga
+/sbg cover custom Interface\AddOns\MyCovers\flower.tga
 ```
 
 Use a separate `MyCovers` folder to keep personal images outside addon
-updates. `/spider cover custom` reselects the last saved custom path.
+updates. `/sbg cover custom` reselects the last saved custom path.
 Choose a bundled preset at any time to switch back.
 
 The addon reads only a local `.tga` texture through the game's normal UI

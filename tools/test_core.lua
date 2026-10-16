@@ -245,7 +245,8 @@ check(SBeGoneSettings.autoTrack == nil and SBeGoneSettings.stickyCovers == nil,
 check(SBeGone.Cover.Park == nil and SBeGone.Cover.Place == nil and SBeGone.Cover.Save == nil
     and SBeGone.Cover.Restore == nil and SBeGone.Cover.SyncDrags == nil
     and SBeGone.Cover.ApplyInteractivity == nil, "cover: removed APIs cannot create screen covers or enable interaction")
-check(_G.SLASH_SPIDER1 == "/spider" and _G.SLASH_SPIDER2 == "/spidergone", "slash: both supported aliases are registered")
+check(_G.SLASH_SBG1 == "/sbg" and type(SlashCmdList["SBG"]) == "function"
+    and _G.SLASH_SPIDER1 == nil and _G.SLASH_SPIDER2 == nil, "slash: /sbg is registered without the retired command aliases")
 local out = capture(function() SBeGone.Slash("") end)
 check(#out == 3 and out[1]:find("WoW 1%.60%.1") and out[3]:find("mode=tracking"),
     "status: reports client and tracking without saved-layout controls")
@@ -322,30 +323,30 @@ check(SBeGone.Units.IsSpider("d8") == true,
 SBeGoneSettings.namePatterns = {}
 clearUnits()
 
--- ---- /spider name | names | forget (owner escape hatch) -----------------
-out = capture(function() SlashCmdList["SPIDER"](" name Anconan Spider ") end)
+-- ---- /sbg name | names | forget (owner escape hatch) -----------------
+out = capture(function() SlashCmdList["SBG"](" name Anconan Spider ") end)
 check(SBeGoneSettings.extraNames[1] == "Anconan Spider" and #out == 1,
 	"name: adds an exact creature name")
 setUnit("n1", { name = "anconan spider", level = 20 })
 check(SBeGone.Units.IsSpider("n1") == true,
 	"name: the named creature is covered straight away (case-insensitive)")
-out = capture(function() SlashCmdList["SPIDER"](" name Anconan Spider ") end)
+out = capture(function() SlashCmdList["SBG"](" name Anconan Spider ") end)
 check(#SBeGoneSettings.extraNames == 1 and out[1]:find("already on your") ~= nil,
 	"name: duplicates refused instead of growing the list")
-out = capture(function() SlashCmdList["SPIDER"](" names ") end)
+out = capture(function() SlashCmdList["SBG"](" names ") end)
 check(out[1]:find("1 extra name") ~= nil and out[2]:find("Anconan Spider") ~= nil,
 	"names: header line plus the list")
-out = capture(function() SlashCmdList["SPIDER"](" forget Anconan Spider ") end)
+out = capture(function() SlashCmdList["SBG"](" forget Anconan Spider ") end)
 check(#SBeGoneSettings.extraNames == 0 and out[1]:find("forgot") ~= nil,
 	"forget: removes the name again")
-out = capture(function() SlashCmdList["SPIDER"](" name ") end)
+out = capture(function() SlashCmdList["SBG"](" name ") end)
 check(out[1]:find("usage") ~= nil, "name: bare form prints usage and changes nothing")
 -- 255-char chat limit: a long list must wrap, never truncate mid-name
 for i = 1, 20 do
-	SlashCmdList["SPIDER"](" name Spider With A Very Long Placeholder Name " .. i .. " ")
+	SlashCmdList["SBG"](" name Spider With A Very Long Placeholder Name " .. i .. " ")
 end
 check(#SBeGoneSettings.extraNames == 20, "name: 20 distinct names accepted")
-out = capture(function() SlashCmdList["SPIDER"](" names ") end)
+out = capture(function() SlashCmdList["SBG"](" names ") end)
 local over = 0
 for _, line in ipairs(out) do if #line > 255 then over = over + 1 end end
 check(#out >= 3 and over == 0, "names: long list wraps inside the 255-char chat limit")
@@ -1182,7 +1183,7 @@ CreateFrame = function()
 end
 local pickerFallback = capture(function() SBeGone.Slash("config") end)
 CreateFrame = ordinaryCreateFrame
-check(O.unavailable and #pickerFallback == 3 and pickerFallback[1]:find("/spider cover"),
+check(O.unavailable and #pickerFallback == 3 and pickerFallback[1]:find("/sbg cover"),
     "config: an unavailable UI leaves working command-based cover selection")
 O.frame, O.unavailable = pickerFrame, nil
 capture(function() SBeGone.Slash("cover sage") end)

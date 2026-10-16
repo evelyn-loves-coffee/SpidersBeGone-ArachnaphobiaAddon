@@ -3,26 +3,26 @@
 Tracking is the only automatic detection mode. Visible accessible spider
 nameplates receive click-through covers without targeting or pointer input.
 Covers never accept mouse input or store screen positions.
-  * /spider enable: enable tracking (the default) and retry paused coverage.
-  * /spider disable: hide every cover and stop tracking.
-  * Bare /spider prints diagnostics.
+  * /sbg enable: enable tracking (the default) and retry paused coverage.
+  * /sbg disable: hide every cover and stop tracking.
+  * Bare /sbg prints diagnostics.
 
 Client facts (docs/PLAN.md §2, verified in-client 2026-10-13):
   * WoW Forever 1.60.1 / build 70374 / interface 16001, Lua 5.1
   * RegisterEvent ERRORS on unknown events — only SBG6-confirmed events
-  * Slash = two-part registration (SLASH_SPIDERn + SlashCmdList["SPIDER"])
+  * Slash = two-part registration (SLASH_SBGn + SlashCmdList["SBG"])
   * UnitCanAttack is TWO-ARG on this client: UnitCanAttack(unit, target)
   * A ~10 Hz C_Timer driver scans nameplates; optional plate events refresh it.
 ]]
 
 SBeGone = SBeGone or {}
-SBeGone.version = "0.3.2"
+SBeGone.version = "0.3.3"
 local A = SBeGone.Access
 
 SBeGone.hidden = nil  -- panic-hide seam (M4); true hides every cover
 SBeGone.ready = false -- true once a character's covers are restored
 
--- Diagnostic logging (/spider debug on). Kept because SBG13 was solved from
+-- Diagnostic logging (/sbg debug on). Kept because SBG13 was solved from
 -- chat alone; off by default so ordinary play stays quiet.
 SBeGone.debug = false
 
@@ -72,8 +72,8 @@ local DEFAULTS = {
 	-- distance signal the plate does expose: its apparent width
 	-- (GetWidth x GetEffectiveScale, in UI-scale px). At/above nearThreshold
 	-- the plate is saturated next to the model and the tracked size is
-	-- multiplied by nearBoost. Calibrate: /spider debug on, walk 30y -> 2y
-	-- at a spider, read the 'SBG| near:' line, then /spider near <N>. 0 = off.
+	-- multiplied by nearBoost. Calibrate: /sbg debug on, walk 30y -> 2y
+	-- at a spider, read the 'SBG| near:' line, then /sbg near <N>. 0 = off.
 	nearThreshold = 0,
 	nearBoost = 2.6,
 	debug = false,
@@ -108,8 +108,7 @@ end
 EnsureSettings()
 
 -- ----------------------------------------------------------------- slash
-_G.SLASH_SPIDER1 = "/spider"
-_G.SLASH_SPIDER2 = "/spidergone"
+_G.SLASH_SBG1 = "/sbg"
 
 function SBeGone.Slash(msg)
 	local first = string.match(msg or "", "^%s*(%S+)") or ""
@@ -122,7 +121,7 @@ function SBeGone.Slash(msg)
 	elseif first == "opacity" then
 		local value = tonumber((msg or ""):match("^%s*%S+%s+(%S+)%s*$"))
 		if value then SBeGone.Appearance.SetOpacity(value) end
-		print(("SBG| opacity = %d%% (80-100%%; /spider config or /spider opacity 0.8-1)")
+		print(("SBG| opacity = %d%% (80-100%%; /sbg config or /sbg opacity 0.8-1)")
 			:format(math.floor(SBeGone.Appearance.Opacity() * 100 + 0.5)))
 	elseif first == "on" or first == "enable" then
 		SBeGone.DeathWarning.Clear()
@@ -144,7 +143,7 @@ function SBeGone.Slash(msg)
 			SBeGone.ClearTrack()
 			SBeGone.Cover.HideAll()
 		end
-		print("SBG| disabled - all covers hidden (/spider enable restores tracking)")
+		print("SBG| disabled - all covers hidden (/sbg enable restores tracking)")
 	elseif first == "toggle" then
 		SBeGone.Slash(SBeGoneSettings.enabled and "disable" or "enable")
 	elseif first == "grow" or first == "drop" or first == "size" then
@@ -154,7 +153,7 @@ function SBeGone.Slash(msg)
 		local key = (first == "grow") and "trackScale" or (first == "drop") and "drop" or "coverSize"
 		local v = tonumber(string.match(msg or "", "^%s*%S+%s+(%S+)"))
 		if not v then
-			print(("SBG| %s = %s (set with: /spider %s N)"):format(key,
+			print(("SBG| %s = %s (set with: /sbg %s N)"):format(key,
 				tostring(SBeGoneSettings[key]), first))
 		else
 			local lo, hi = 0.2, 6
@@ -174,7 +173,7 @@ function SBeGone.Slash(msg)
 		-- multiplied by the near-field boost (close spiders, legs showing).
 		local v = tonumber(string.match(msg or "", "^%s*%S+%s+(%S+)"))
 		if not v then
-			print(("SBG| near = %s (set with: /spider near N - 0 off; read N from the 'SBG| near:' debug line)"):format(
+			print(("SBG| near = %s (set with: /sbg near N - 0 off; read N from the 'SBG| near:' debug line)"):format(
 				tostring(SBeGoneSettings.nearThreshold)))
 		else
 			v = math.floor(v)
@@ -193,7 +192,7 @@ function SBeGone.Slash(msg)
 		-- zone, and curated fragments already live in SpiderDB.lua.
 		local name = (msg or ""):match("^%s*%S+%s*(.-)%s*$")
 		if not name or name == "" then
-			print("SBG| usage: /spider name <exact creature name>  (list them with /spider names)")
+			print("SBG| usage: /sbg name <exact creature name>  (list them with /sbg names)")
 		else
 			local list = (type(SBeGoneSettings.extraNames) == "table") and SBeGoneSettings.extraNames or {}
 			local dup
@@ -203,18 +202,18 @@ function SBeGone.Slash(msg)
 			if dup then
 				print(("SBG| '%s' is already on your extra-name list (entry %d)"):format(name, dup))
 			elseif #list >= 64 then
-				print("SBG| extra-name list is full (64) - remove one with /spider forget <name>")
+				print("SBG| extra-name list is full (64) - remove one with /sbg forget <name>")
 			else
 				list[#list + 1] = name
 				SBeGoneSettings.extraNames = list
-				print(("SBG| will cover '%s' from now on (%d extra) - undo with /spider forget %s")
+				print(("SBG| will cover '%s' from now on (%d extra) - undo with /sbg forget %s")
 					:format(name, #list, name))
 			end
 		end
 	elseif first == "names" then
 		local list = (type(SBeGoneSettings.extraNames) == "table") and SBeGoneSettings.extraNames or {}
 		if #list == 0 then
-			print("SBG| no extra names yet - add one with /spider name <exact creature name>")
+			print("SBG| no extra names yet - add one with /sbg name <exact creature name>")
 		else
 			print(("SBG| %d extra name(s):"):format(#list))
 			local line = ""
@@ -233,7 +232,7 @@ function SBeGone.Slash(msg)
 		local name = (msg or ""):match("^%s*%S+%s*(.-)%s*$")
 		local list = (type(SBeGoneSettings.extraNames) == "table") and SBeGoneSettings.extraNames or {}
 		if not name or name == "" then
-			print("SBG| usage: /spider forget <name>")
+			print("SBG| usage: /sbg forget <name>")
 		else
 			local kept, removed = {}, 0
 			for _, existing in ipairs(list) do
@@ -251,14 +250,14 @@ function SBeGone.Slash(msg)
 	elseif first == "help" then
 		-- No '|' chars in chat text: the WoW chat filter eats chat-control
 		-- sequences like |t / |h (SBG11) — use ' / ' separators.
-		print("SBG| /spider enable / disable / config - image picker / cover <fox / red / blue / sage / charcoal / custom PATH>")
+		print("SBG| /sbg enable / disable / config - image picker / cover <fox / red / blue / sage / charcoal / custom PATH>")
 		print("SBG| Advanced: opacity 0.8-1 / grow N / drop N / near N / size N / name X / names / forget X / debug on / debug off")
 	else
-		print(("SBG| unknown subcommand '%s' - /spider help for usage"):format(first))
+		print(("SBG| unknown subcommand '%s' - /sbg help for usage"):format(first))
 	end
 end
 
-SlashCmdList["SPIDER"] = function(m)
+SlashCmdList["SBG"] = function(m)
 	SBeGone.Slash(m)
 end
 
@@ -332,7 +331,7 @@ function SBeGone.Refresh()
 			-- Stop rather than trying another automatic detection channel.
 			SBeGone.autoSuspended = true
 			SBeGone.ClearTrack()
-			print("SBG| automatic covers paused after errors; coverage limited (/spider enable to retry)")
+			print("SBG| automatic covers paused after errors; coverage limited (/sbg enable to retry)")
 		end
 	else
 		SBeGone.tickErrors = 0
@@ -553,7 +552,7 @@ function SBeGone.TrackTick()
 							SBeGone.trackFailures = (SBeGone.trackFailures or 0) + 1
 							if SBeGone.trackFailures == 20 then
 								SBeGone.autoSuspended = true
-								print("SBG| the client would not anchor covers - automatic covers paused; coverage limited (/spider enable to retry)")
+								print("SBG| the client would not anchor covers - automatic covers paused; coverage limited (/sbg enable to retry)")
 							end
 						end
 					end
