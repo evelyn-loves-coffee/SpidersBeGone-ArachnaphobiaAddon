@@ -57,6 +57,8 @@ end
 
 UnitExists = function(u) return unitData(u) ~= nil end
 UnitIsVisible = function(u) return unitData(u) ~= nil end
+UnitIsDead = function(u) local d = unitData(u); return d and d.dead == true or false end
+UnitGUID = function(u) local d = unitData(u); return d and d.guid end
 
 GetCursorPosition = function()
     legacyReads = legacyReads + 1
@@ -158,8 +160,20 @@ local function makeFrame()
 		function tex:SetVertexAlpha(_) end
 		return tex
 	end
+	function f:CreateFontString()
+		local text = {}
+		function text:SetAllPoints(frame) self.frame = frame end
+		function text:SetText(value) self.value = value end
+		function text:SetFont(...) self.font = { ... } end
+		function text:SetTextColor(...) self.color = { ... } end
+		function text:SetJustifyH(value) self.justifyH = value end
+		function text:SetJustifyV(value) self.justifyV = value end
+		return text
+	end
 	function f:SetScript(script, handler)
 		self.scripts = self.scripts or {}
+		self.rawScripts = self.rawScripts or {}
+		self.rawScripts[script] = handler
 		-- Client-faithful (SBG10): the native SetScript calls handlers
 		-- with NO arguments; event data arrives via the `this`/`event`/
 		-- `arg1`..`arg9` globals (Spoken's Compat.lua override proves
@@ -192,6 +206,7 @@ SBeGoneSettings = { enabled = "yes", color = "red", covers = 42, parkCount = 3, 
 dofile("SpidersBeGone/SpiderDB.lua")
 dofile("SpidersBeGone/Access.lua")
 dofile("SpidersBeGone/Units.lua")
+dofile("SpidersBeGone/DeathWarning.lua")
 dofile("SpidersBeGone/Cover.lua")
 dofile("SpidersBeGone/Core.lua")
 
@@ -1331,6 +1346,197 @@ check(SBeGoneSettings.covers == staleCovers
 	and type(SBeGoneSettings.covers["StaleMarker"]) == "table"
 	and #SBeGoneSettings.covers["StaleMarker"].list == 1,
 	"settings: merge fills keys in place, keeping the saved per-character lists")
+
+-- ---- centered automatic corpse warnings ---------------------------------
+local W = SBeGone.DeathWarning
+local originalTime, originalAfter = GetTime, C_Timer.After
+local warningTime, warningTimers = 1000, {}
+GetTime = function() return warningTime end
+C_Timer.After = function(delay, callback)
+    warningTimers[#warningTimers + 1] = { delay = delay, callback = callback }
+end
+SBeGoneSettings.enabled, SBeGoneSettings.arrange = true, false
+SBeGone.hidden, SBeGone.autoSuspended = nil, false
+SBeGone.Cover.ClearAll()
+SBeGone.ClearTrack()
+W.Clear()
+clearUnits()
+setUnit("player", { name = "CorpseTester", player = true })
+setPlate(1, makePlate(100, 1))
+setUnit("nameplate1", { name = "Forest Spider", level = 2, famId = 3,
+    guid = "public-spider-A", dead = false })
+SBeGone.Tick()
+check(W.expires == nil, "corpse warning: living spiders do not display a warning")
+units.nameplate1.dead = true
+warningTime = 1000.1
+event, arg1 = "UNIT_HEALTH", "nameplate1"
+SBeGone.eventFrame.scripts.OnEvent()
+event, arg1 = nil, nil
+flushDisplay()
+check(W.frame and W.frame:IsShown() and W.frame.text.value:find("LOOK AWAY")
+    and W.frame.text.value:find("corpse"), "corpse warning: a tracked death displays look-away text")
+local warningPoint = W.frame.points[1]
+check(W.frame:GetParent() == UIParent and warningPoint.anchor == "CENTER"
+    and warningPoint.relPoint == "CENTER" and warningPoint.x == 0 and warningPoint.y == 0,
+    "corpse warning: popup is centered on the screen independently of the removed plate")
+check(W.frame.mouse == false, "corpse warning: centered notice is click-through")
+check(math.abs(W.expires - warningTime - 1.75) < 0.00001,
+    "corpse warning: display duration is 1.75 seconds")
+local firstDeadline = W.expires
+local firstTimer = warningTimers[#warningTimers]
+check(firstTimer.delay == 1.75, "corpse warning: a real timer expires the popup between scans")
+W.OnDeath("public-spider-A")
+SBeGone.Tick()
+check(W.expires == firstDeadline, "corpse warning: duplicate health/death/poll signals do not extend the notice")
+warningTime = firstDeadline - 0.01
+W.Tick()
+check(W.frame:IsShown(), "corpse warning: remains visible until its duration ends")
+warningTime = firstDeadline
+W.Tick()
+check(not W.frame:IsShown() and W.expires == nil, "corpse warning: disappears after 1.75 seconds")
+
+-- Plate removal alone is not proof of death; readable GUID events can follow it.
+W.Clear()
+units.nameplate1.guid, units.nameplate1.dead = "public-spider-B", false
+SBeGone.Tick()
+event, arg1 = "NAME_PLATE_UNIT_REMOVED", "nameplate1"
+SBeGone.eventFrame.scripts.OnEvent()
+event, arg1 = nil, nil
+check(W.expires == nil, "corpse warning: leaving nameplate range does not produce a death warning")
+units.nameplate1 = nil
+SBeGone.eventFrame.rawScripts.OnEvent(nil, "UNIT_DIED", "public-spider-B")
+flushDisplay()
+check(W.frame:IsShown(), "corpse warning: public death event can warn just after the plate/token disappears")
+W.Hide()
+W.OnDeath("never-observed-creature")
+check(W.expires == nil, "corpse warning: unrelated or unseen deaths are ignored")
+W.Clear()
+setUnit("nameplate1", { name = "Forest Spider", level = 2, famId = 3,
+    guid = "expired-spider", dead = false })
+SBeGone.Tick()
+warningTime = warningTime + W.RECENT_SECONDS + 0.1
+W.OnDeath("expired-spider")
+check(W.expires == nil, "corpse warning: stale observations cannot trigger remote death notices")
+
+-- Token reuse and identity restrictions must not consult stale classifications.
+W.Clear()
+units.nameplate1.guid = "old-spider"
+W.Observe("nameplate1")
+units.nameplate1 = { name = "Wolf", level = 2, famId = 1, guid = "new-wolf", dead = true }
+W.CheckUnit("nameplate1")
+check(W.expires == nil, "corpse warning: recycled tokens do not report a different creature as a spider")
+W.Clear()
+setUnit("nameplate1", { name = "Forest Spider", level = 2, famId = 3,
+    guid = "restricted-spider", dead = false })
+W.Observe("nameplate1")
+local secretDeath = {}
+issecretvalue = function(value) return rawequal(value, secretDeath) end
+arg1 = "restricted-spider"
+SBeGone.eventFrame.rawScripts.OnEvent(nil, "UNIT_DIED", secretDeath)
+arg1 = nil
+check(W.expires == nil, "corpse warning: secret event payload never falls back to legacy arguments")
+local savedDead = UnitIsDead
+UnitIsDead = function() return secretDeath end
+W.CheckUnit("nameplate1")
+check(W.expires == nil, "corpse warning: inaccessible death state cannot trigger a guessed warning")
+UnitIsDead = savedDead
+C_Secrets = { ShouldUnitIdentityBeSecret = function() return true end }
+W.OnDeath("restricted-spider")
+check(W.expires == nil and W.byGUID["restricted-spider"] == nil,
+    "corpse warning: death events also reject an actively restricted cached unit")
+W.CheckUnit("nameplate1")
+W.OnDeath("restricted-spider")
+check(W.expires == nil, "corpse warning: newly restricted identity discards cached classification")
+C_Secrets, issecretvalue = nil, nil
+
+-- Missing GUID APIs still allow observed readable death-state transitions.
+W.Clear()
+units.nameplate1.guid, units.nameplate1.dead = "removing-spider", false
+SBeGone.Tick()
+units.nameplate1.dead = true
+event, arg1 = "NAME_PLATE_UNIT_REMOVED", "nameplate1"
+SBeGone.eventFrame.scripts.OnEvent()
+event, arg1 = nil, nil
+flushDisplay()
+check(W.frame:IsShown() and SBeGone.track.nameplate1 == nil,
+    "corpse warning: plate removal checks readable death state before releasing the cover")
+W.Clear()
+local savedGUID = UnitGUID
+UnitGUID = nil
+units.nameplate1.dead = false
+W.Observe("nameplate1")
+units.nameplate1.dead = true
+SBeGone.eventFrame.rawScripts.OnEvent(nil, "UNIT_FLAGS", "nameplate1")
+flushDisplay()
+check(W.frame:IsShown(), "corpse warning: readable unit death works without GUID or death-event support")
+W.Hide()
+units.nameplate1.dead = false
+W.Observe("nameplate1")
+units.nameplate1.dead = true
+W.Observe("nameplate1")
+check(W.expires ~= nil, "corpse warning: a later living-to-dead transition can warn without GUID support")
+UnitGUID = savedGUID
+
+-- New deaths reset the timeout; an older callback cannot dismiss a newer notice.
+W.Clear()
+units.nameplate1.guid = "spider-C"
+W.Observe("nameplate1")
+local oldWarningTimer = warningTimers[#warningTimers]
+warningTime = warningTime + 0.5
+units.nameplate1.guid = "spider-D"
+W.Observe("nameplate1")
+flushDisplay()
+oldWarningTimer.callback()
+check(W.frame:IsShown(), "corpse warning: an old timer cannot hide a newer death notice")
+warningTimers[#warningTimers].callback()
+check(not W.frame:IsShown(), "corpse warning: the current notice timer hides its popup")
+W.Clear()
+units.nameplate1.guid = "spider-E"
+W.Observe("nameplate1")
+flushDisplay()
+capture(function() SBeGone.Slash("disable") end)
+check(not W.frame:IsShown() and next(W.byGUID) == nil and next(W.byToken) == nil,
+    "corpse warning: disable immediately hides the popup and clears observations")
+W.OnDeath("spider-E")
+W.Observe("nameplate1")
+flushDisplay()
+check(W.expires == nil, "corpse warning: disabled events and scans cannot show the notice")
+SBeGoneSettings.enabled = true
+W.Observe("nameplate1")
+event = "PLAYER_ENTERING_WORLD"
+SBeGone.eventFrame.scripts.OnEvent()
+event = nil
+check(W.expires == nil and next(W.byGUID) == nil,
+    "corpse warning: world transitions clear warnings and cached identities")
+
+-- An unavailable text API must not interrupt ordinary nameplate tracking.
+local normalCreateFrame, previousPopup = CreateFrame, W.frame
+W.Clear()
+W.frame = nil
+CreateFrame = function()
+    local frame = normalCreateFrame()
+    frame.CreateFontString = function() error("font API unavailable", 0) end
+    return frame
+end
+units.nameplate1.guid = "spider-F"
+local warningOutput = capture(function() W.Observe("nameplate1") end)
+CreateFrame = normalCreateFrame
+check(W.popupUnavailable and #warningOutput == 1 and warningOutput[1]:find("LOOK AWAY"),
+    "corpse warning: unavailable popup API falls back to a clear chat notice without an error")
+W.frame = previousPopup
+W.Clear()
+W.popupUnavailable = false
+units.nameplate1.dead = false
+for index = 1, W.MAX_RECENT + 5 do
+    units.nameplate1.guid = "churn-spider-" .. index
+    W.Observe("nameplate1")
+end
+local recentCount = 0
+for _ in pairs(W.byGUID) do recentCount = recentCount + 1 end
+check(recentCount <= W.MAX_RECENT, "corpse warning: recent observations stay bounded during token churn")
+W.Clear()
+check(legacyReads == 0, "corpse warning: all paths remain free of mouseover and cursor queries")
+GetTime, C_Timer.After = originalTime, originalAfter
 
 if fails > 0 then
 	error(fails .. " test(s) FAILED", 0)

@@ -4,9 +4,9 @@ Addon for **World of Warcraft Forever** (classic 1.x-line client, v1.60.1) that
 covers spider models with a nameplate-attached UI element. UI-layer only: no model
 swaps, no game-file modification.
 
-**Status: v0.2.7 tracking only — tracking in-game verified 2026-10-16 (Tirisfal);
-`drop` default calibrated in the same round; near-field boost added for
-spiders that are close enough to outgrow the plate-sized cover.**
+**Status: v0.2.8 — core tracking verified in game 2026-10-16 (Tirisfal);
+near-field boost retained, and the new automatic corpse warning is offline
+tested, awaiting live validation.**
 Tracked covers are now **children of the spider's nameplate**, so native
 movement and scale apply to the cover and its offset between polling ticks.
 The public unit-to-nameplate mapper is preferred; a metadata fallback requires
@@ -35,7 +35,7 @@ for the historical design and client-probe records.
 Extract the fixed ZIP and replace the `SpidersBeGone/` folder in your client's
 `Interface/AddOns/` directory, then log in or `/reload`. The `.toc` must be at
 `Interface/AddOns/SpidersBeGone/SpidersBeGone.toc`, without an extra nested
-repository folder. `/spider` should report **v0.2.7**.
+repository folder. `/spider` should report **v0.2.8**.
 
 Enable enemy nameplates in the game. The addon starts enabled on a new install;
 `/spider enable` also enables tracking immediately and retries paused coverage.
@@ -61,11 +61,25 @@ from far to close at a spider, read the `SBG| near:` line, then
 **Known limitation:** when the camera is very close, the client clamps the
 nameplate itself (edge/stacking), the cover follows the plate, and no
 UI-layer addon can reposition the plate on this client.
+
+Covers also disappear when the game removes a dead unit's nameplate. When
+the addon observes an accessible spider death, a click-through **LOOK AWAY**
+warning appears in the center of the screen for **1.75 seconds**, without
+targeting or mouseover. It warns that the corpse may be visible; it does not
+cover or track the body. Deaths not observed through accessible unit data or
+a recent readable death event can be missed. NoSpider uses a mouseover warning
+for this case; see [docs/CORPSE-HANDLING.md](docs/CORPSE-HANDLING.md) for our
+automatic implementation and its limits.
 `/spider` reports `limited=true` when a checked value/frame is inaccessible,
 and `paused=true` after repeated failures. `/spider enable` explicitly retries
 automatic covers. See [docs/TRACKING-ONLY.md](docs/TRACKING-ONLY.md) for controls
 and upgrade behavior, and [docs/NATIVE-OVERLAYS.md](docs/NATIVE-OVERLAYS.md) for
 the native attachment implementation.
+
+`/spider disable` also dismisses the corpse warning and clears its observation
+history. The timer and subsequent deaths cannot redisplay it while disabled.
+`corpsePopup=unavailable` in diagnostics means the popup text API failed; a chat
+warning is used instead so tracking can continue.
 
 ## NoSpider inspiration and Classic data
 

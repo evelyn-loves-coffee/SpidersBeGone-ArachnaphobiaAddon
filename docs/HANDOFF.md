@@ -1,11 +1,19 @@
-# Handoff: v0.2.7 tracking-only covers
+# Handoff: v0.2.8 tracking and automatic corpse warning
 
 Current implementation and controls are in [TRACKING-ONLY.md](TRACKING-ONLY.md)
-(v0.2.6 snapshot; v0.2.7 adds the near-field boost described below). The
+(v0.2.6 snapshot; v0.2.7 added the near-field boost, and v0.2.8 adds the
+corpse warning). The
 packaged Lua 5.1 suite passes offline. Core tracking was in-game verified
 2026-10-16 (below); the remaining live checks are the tracking-only
 enable/disable path, migration of a real pre-schema-3 save, and calibrating
 the near-field threshold in game.
+
+After pulling `2777b0d` and integrating `75571b9`, added the centered LOOK AWAY popup for
+observed spider deaths. It is click-through and expires after 1.75 seconds.
+NoSpider itself releases removed plates and uses mouseover warnings, not
+continued corpse masking. Our implementation preserves no-mouseover tracking
+and native-frame reuse cleanup; the new popup needs live validation. See
+[CORPSE-HANDLING.md](CORPSE-HANDLING.md) for detection and limitations.
 
 ## Current behavior
 
@@ -31,10 +39,16 @@ the near-field threshold in game.
   line (1 Hz) with each plate's apparent width for calibration.
 - Secret identities and forbidden frames are skipped. Rejected cleanup
   defers reuse. Repeated errors pause tracking; enable explicitly retries.
+- A readable death state on an observed nameplate or a readable death GUID
+  matching a recent observation triggers the brief centered popup. Mere
+  plate loss, stale/unseen GUIDs and secret values do not. Disable/world
+  transitions clear it and its bounded recent-observation cache.
 
 ## Files and verification
 
 - `SpidersBeGone/Core.lua`: commands, settings migration, scan and lifecycle.
+- `SpidersBeGone/DeathWarning.lua`: original centered UI, 1.75-second timeout,
+  deduplication, guarded death queries/events and recent-GUID matching.
 - `SpidersBeGone/Cover.lua`: native parenting, manual layout migration and
   visibility gating. `Access.lua`/`Units.lua` enforce readable public queries.
 - `tools/test_core.lua`: behavioral regressions including pointer-query
@@ -95,16 +109,18 @@ tracking-only refactor):
   migration of a real pre-schema-3 save, and the near-field threshold
   (`/spider debug on` → walk far-to-close at a spider → `/spider near N`).
 
-## Next in-game round (v0.2.7)
+## Next in-game round (v0.2.8)
 
-Deployed and pushed state: commit `75571b9` (`feat: near-field boost for
-close-range spiders (v0.2.7)`), `AddOns/` in sync (`diff -r` clean), packaged
-suite **221 checks** against the installed sources. ZIP:
-`SpidersBeGone-0.2.7-fixed.zip`.
+Upstream's last installed-state report was v0.2.7, commit `75571b9`, with
+`AddOns/` in sync and 221 packaged-source checks. This session pulled its
+follow-up checklist commit `3ebe8a7` and preserved both updates.
+The current combined build is v0.2.8 with **250 packaged-source checks** and
+ZIP `SpidersBeGone-0.2.8-fixed.zip`; it has not been installed in game here.
 
 In order:
 
-1. `/reload`; bare `/spider` must report **v0.2.7** with `grow=1.6 drop=0.5
+1. Install the v0.2.8 addon folder, then `/reload`; bare `/spider` must report
+   **v0.2.8** with `grow=1.6 drop=0.5
    near=0`, tracking enabled, `limited=false`.
 2. **Regression re-check** (30 s): Tirisfal, walk up on spiders — covers
    attach, follow movement and zoom, ground still click-through.
@@ -128,6 +144,12 @@ In order:
    reported defaults, tracking on, and **no ghost cursor covers** from the
    old mode. (The Lua suite already covers the same path with a simulated
    stale save.)
+6. **Corpse warning:** with the pointer elsewhere, kill a tracked spider.
+   Verify the centered LOOK AWAY popup lasts 1.5 to 2 seconds, remains
+   click-through, and can appear even when the plate disappears. Kill two
+   spiders in quick succession; a stale timer must not hide the newer
+   warning early. Disable while it is visible; it must hide immediately and
+   stay off. Corpses themselves remain uncovered after native plate removal.
 
 If anything fails: keep `/spider debug on`, reproduce, and collect the `SBG|`
 chat lines (especially `SBG| near:` — the evidence for retuning

@@ -16,7 +16,7 @@ Client facts (docs/PLAN.md §2, verified in-client 2026-10-13):
 ]]
 
 SBeGone = SBeGone or {}
-SBeGone.version = "0.2.7"
+SBeGone.version = "0.2.8"
 local A = SBeGone.Access
 
 SBeGone.hidden = nil  -- panic-hide seam (M4); true hides every cover
@@ -118,6 +118,7 @@ function SBeGone.ClearCovers()
 		print("SBG| not in a character yet - nothing to clear")
 		return
 	end
+	SBeGone.DeathWarning.Clear()
 	SBeGone.track = {}
 	SBeGone.trackSlots = {}
 	SBeGone.Cover.ClearAll()
@@ -129,6 +130,7 @@ function SBeGone.Slash(msg)
 	if first == "" then
 		SBeGone.Selftest()
 	elseif first == "on" or first == "enable" then
+		SBeGone.DeathWarning.Clear()
 		SBeGoneSettings.enabled = true
 		SBeGoneSettings.arrange = false
 		SBeGone.autoSuspended = false
@@ -142,6 +144,7 @@ function SBeGone.Slash(msg)
 		end
 		print("SBG| enabled - tracking visible spider nameplates")
 	elseif first == "off" or first == "disable" then
+		SBeGone.DeathWarning.Clear()
 		SBeGoneSettings.enabled = false
 		SBeGoneSettings.arrange = false
 		if SBeGone.ready then
@@ -187,6 +190,7 @@ function SBeGone.Slash(msg)
 		end
 		local a = string.match(msg or "", "^%s*arrange%s+(%S+)") or ""
 		if a == "on" then
+			SBeGone.DeathWarning.Clear()
 			SBeGoneSettings.arrange = true
 			if SBeGone.ready then
 				SBeGone.ClearTrack()
@@ -354,9 +358,11 @@ function SBeGone.Selftest()
 			for _ in ipairs(list) do saved = saved + 1 end
 		end
 	end
-	print(("SBG| enabled=%s | char=%s | driver=%s"):format(
+	local warning = SBeGone.DeathWarning
+	local popupState = warning.popupUnavailable and "unavailable" or (warning.expires and "active" or "idle")
+	print(("SBG| enabled=%s | char=%s | driver=%s | corpsePopup=%s"):format(
 		tostring(s.enabled), tostring(SBeGone.char),
-		tostring(SBeGone.driverOn)))
+		tostring(SBeGone.driverOn), popupState))
 	local tracked = 0
 	if type(SBeGone.track) == "table" then
 		for _, slot in pairs(SBeGone.track) do
@@ -383,6 +389,9 @@ function SBeGone.Tick()
 	if C_Timer and C_Timer.After then
 		C_Timer.After(tickInterval, SBeGone.Tick)
 	end
+	-- Expiration/cleanup must still run while tracking is disabled or paused.
+	local warningOK = pcall(SBeGone.DeathWarning.Tick)
+	if not warningOK then SBeGone.DeathWarning.Clear() end
 	if SBeGone.ready and SBeGoneSettings.enabled and not SBeGone.hidden then
 		SBeGone.Refresh()
 	end
@@ -595,6 +604,7 @@ function SBeGone.TrackTick()
 			and (not UnitIsVisible or A.Query(UnitIsVisible, token) == true) then
 			local isSpider = U.IsSpider(token)
 			if isSpider then
+				SBeGone.DeathWarning.Observe(token)
 				local plate = SBeGone.PlateFrameFor(token, i)
 				local slot = t[token]
 				if plate then
@@ -700,6 +710,7 @@ function SBeGone.OnEnterWorld()
 	if not char then return false end -- still at character select
 	SBeGone.char = char
 	SBeGone.ready = true
+	SBeGone.DeathWarning.Clear()
 	-- Saved manual shields are restored; native covers are rebuilt by tracking.
 	SBeGone.track = {}
 	SBeGone.trackSlots = {}
@@ -738,6 +749,15 @@ local function EnsureEventFrame()
 	-- Unknown event registration is rejected normally and polling remains.
 	pcall(f.RegisterEvent, f, "NAME_PLATE_UNIT_ADDED")
 	pcall(f.RegisterEvent, f, "NAME_PLATE_UNIT_REMOVED")
+	pcall(f.RegisterEvent, f, "UNIT_HEALTH")
+	pcall(f.RegisterEvent, f, "UNIT_FLAGS")
+	pcall(f.RegisterEvent, f, "UNIT_DIED")
+	local function readablePayload(primary, legacy)
+		if not A.CanRead(primary) then return nil end
+		if primary ~= nil then return primary end
+		if not A.CanRead(legacy) then return nil end
+		return legacy
+	end
 	f:SetScript("OnEvent", function(_, evt, unitArg)
 		-- SBG10: this client's native SetScript calls handlers with NO
 		-- arguments — event data arrives via the `this`/`event`/`arg1`..
@@ -745,20 +765,28 @@ local function EnsureEventFrame()
 		-- modern-style clients; the bare global covers this one. A
 		-- parameter named `event` would shadow the global — do not rename.
 		local ev = evt or event
+		local payload = readablePayload(unitArg, arg1)
 		if ev == "VARIABLES_LOADED" then
 			SBeGone.sawVariablesLoaded = true
 			SBeGone.RetryEnterWorld()
 		elseif ev == "PLAYER_ENTERING_WORLD" then
+			SBeGone.DeathWarning.Clear()
 			SBeGone.RetryEnterWorld()
 		elseif ev == "NAME_PLATE_UNIT_REMOVED" then
-			local unit = unitArg or arg1
+			local unit = payload
 			if A.CanRead(unit) and type(unit) == "string" then
+				SBeGone.DeathWarning.CheckUnit(unit)
+				SBeGone.DeathWarning.ForgetToken(unit)
 				local slot = SBeGone.track[unit]
 				if slot then SBeGone.Cover.Release(slot); dropTrack(unit) end
 			end
 		elseif ev == "NAME_PLATE_UNIT_ADDED" and SBeGone.ready
 			and SBeGoneSettings.enabled and not SBeGone.hidden then
 			SBeGone.Refresh()
+		elseif ev == "UNIT_HEALTH" or ev == "UNIT_FLAGS" then
+			SBeGone.DeathWarning.CheckUnit(payload)
+		elseif ev == "UNIT_DIED" then
+			SBeGone.DeathWarning.OnDeath(payload)
 		end
 	end)
 	SBeGone.eventFrame = f

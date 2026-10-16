@@ -1,5 +1,8 @@
 # v0.2.6: tracking-only covers
 
+These tracking-only controls also apply in v0.2.8, which adds the automatic
+1.75-second corpse-warning popup documented in [CORPSE-HANDLING.md](CORPSE-HANDLING.md).
+
 Tracking is the only automatic detection mode. It scans accessible native
 nameplate units and attaches click-through covers to matching spiders without
 targeting or mouseover. The cursor detector and its state have been removed.
