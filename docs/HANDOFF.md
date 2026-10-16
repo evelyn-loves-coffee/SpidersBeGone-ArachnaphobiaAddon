@@ -1,4 +1,4 @@
-# Handoff: v0.3.1 automatic nameplate covers only
+# Handoff: v0.3.2 automatic nameplate covers only
 
 **Primary in-game test machine: the user's partner's computer
 (`evelyn-loves-coffee`).** This checkout is for development and packaging.
@@ -7,7 +7,7 @@ without results from that machine. Core tracking was previously verified
 there in Tirisfal; this removal of the input-taking cover system needs a new
 live check. See [TRACKING-ONLY.md](TRACKING-ONLY.md) for the test sequence.
 
-## Why this release exists
+## Previous cursor incident and upgrade
 
 The user reported that an old layout command spawned a screen cover on the
 partner's client. Clicking it broke mouse control, including after `/reload`.
@@ -33,7 +33,11 @@ Recovery of the already affected native client requires partner validation.
   and clears the death warning. Disabled state survives reloads. Tracking
   requires no targeting, mouseover or cursor queries.
 - `/spider config` explicitly opens an image picker. That editor accepts input;
-  cover frames never do. Fox, muted red/blue/sage and plain charcoal remain,
+  cover frames never do. The opacity slider spans 80-100% in 1% steps and
+  applies immediately to existing covers and the checkerboard preview. Native
+  no-argument slider callbacks query their own value; refresh guards prevent
+  recursion. Percentage buttons are used if the client rejects Slider APIs.
+  Fox, muted red/blue/sage and plain charcoal remain,
   along with local custom TGA textures. Choices save and apply immediately.
   See [COVER-IMAGES.md](COVER-IMAGES.md). Command selection remains available
   if the client rejects window APIs. Close releases edit-box focus.
@@ -49,8 +53,10 @@ Recovery of the already affected native client requires partner validation.
 ## Settings and calibration
 
 Schema 4 deletes `covers`, `parkCount`, `arrange`, `autoTrack`, `stickyCovers`
-and obsolete color/opacity fields. The enabled preference, selected image,
-custom path, extra names and tracking calibration are preserved. Migration
+and the obsolete color field. `opacity` is now a supported setting: it defaults
+to 1, rounds to 1% steps and clamps to 0.8-1 on load, input and rendering.
+The enabled preference, selected image, custom path, extra names and tracking
+calibration are preserved. Migration
 runs both at script load and the actual SavedVariables restore point.
 
 Defaults: `trackScale=1.6`, `drop=0.5`, `nearThreshold=0` (off), `nearBoost=2.6`,
@@ -70,7 +76,8 @@ beyond a cover. No UI-layer workaround for missing world projection is used.
 - `Access.lua` / `Units.lua`: readable public queries and spider recognition.
 - `DeathWarning.lua`: bounded recent observations and brief centered notice.
 - `tools/test_core.lua`: client stubs prohibit movement/screen reads and record
-  mouse-enable history; regressions cover supported behavior and old-state cleanup.
+  mouse-enable history; regressions cover supported behavior, old-state cleanup,
+  opacity bounds, alpha rendering and slider/button compatibility.
 
 From the repository root:
 
@@ -81,7 +88,7 @@ uv run --offline --with lupa python tools/package_addon.py
 git diff --check
 ```
 
-The installable `SpidersBeGone-0.3.1-fixed.zip` is in the repository's parent
+The installable `SpidersBeGone-0.3.2-fixed.zip` is in the repository's parent
 directory; logs and extracted-source checks are ignored under `dist/`.
 Packaging includes only current guides and an explicit list of approved
 artwork. Historical design/probe documents remain in Git for reference;
@@ -95,3 +102,9 @@ Era is the selected MIT source if general area metadata becomes necessary.
 Questie data is excluded. NoSpider is credited inspiration; none of its code,
 artwork or data was copied. Wowhead-derived bulk spawn data is excluded.
 See [DATA-SOURCES.md](DATA-SOURCES.md).
+
+The v0.3.2 slider, thumb rendering and focus release need live validation on
+the partner's machine. Test both endpoints, reload at an intermediate value,
+and confirm ground/camera controls still pass through live covers. Shipped
+textures are validated opaque RGB and fade as one image layer; custom images
+retain a backing and may look more opaque, never less opaque than the setting.

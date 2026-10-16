@@ -16,7 +16,7 @@ Client facts (docs/PLAN.md §2, verified in-client 2026-10-13):
 ]]
 
 SBeGone = SBeGone or {}
-SBeGone.version = "0.3.1"
+SBeGone.version = "0.3.2"
 local A = SBeGone.Access
 
 SBeGone.hidden = nil  -- panic-hide seam (M4); true hides every cover
@@ -45,6 +45,7 @@ local DEFAULTS = {
 	enabled = true,
 	coverStyle = "fox",
 	customCover = "",
+	opacity = 1,
 	coverSize = 96,
 	-- ADDITIONAL name fragments on top of the curated database (SpiderDB.lua).
 	-- Empty by default: the DB already carries the owner's fragments.
@@ -97,7 +98,7 @@ local function EnsureSettings()
 	end
 	-- Purge retired fields for every character at once. A late-loaded save
 	-- must not restore an input-taking mode or any screen-positioned cover.
-	for _, key in ipairs({ "autoTrack", "stickyCovers", "parkCount", "arrange", "covers", "color", "opacity" }) do
+	for _, key in ipairs({ "autoTrack", "stickyCovers", "parkCount", "arrange", "covers", "color" }) do
 		s[key] = nil
 	end
 	SBeGone.Appearance.Normalize(s)
@@ -118,6 +119,11 @@ function SBeGone.Slash(msg)
 		SBeGone.Config.Open()
 	elseif first == "cover" then
 		SBeGone.Appearance.Command((msg or ""):match("^%s*%S+%s*(.-)%s*$"))
+	elseif first == "opacity" then
+		local value = tonumber((msg or ""):match("^%s*%S+%s+(%S+)%s*$"))
+		if value then SBeGone.Appearance.SetOpacity(value) end
+		print(("SBG| opacity = %d%% (80-100%%; /spider config or /spider opacity 0.8-1)")
+			:format(math.floor(SBeGone.Appearance.Opacity() * 100 + 0.5)))
 	elseif first == "on" or first == "enable" then
 		SBeGone.DeathWarning.Clear()
 		SBeGoneSettings.enabled = true
@@ -246,7 +252,7 @@ function SBeGone.Slash(msg)
 		-- No '|' chars in chat text: the WoW chat filter eats chat-control
 		-- sequences like |t / |h (SBG11) — use ' / ' separators.
 		print("SBG| /spider enable / disable / config - image picker / cover <fox / red / blue / sage / charcoal / custom PATH>")
-		print("SBG| Advanced: grow N / drop N / near N / size N / name X / names / forget X / debug on / debug off")
+		print("SBG| Advanced: opacity 0.8-1 / grow N / drop N / near N / size N / name X / names / forget X / debug on / debug off")
 	else
 		print(("SBG| unknown subcommand '%s' - /spider help for usage"):format(first))
 	end

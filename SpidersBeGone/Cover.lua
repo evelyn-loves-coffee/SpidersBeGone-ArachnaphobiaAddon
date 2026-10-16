@@ -76,29 +76,35 @@ end
 -- Some client builds return no value on success; only false or an error is
 -- a detectable failure. A syntactically valid missing file may still show a
 -- placeholder, so custom choices must be checked in the preview in game.
-function C.PaintArt(tex, path)
+function C.PaintArt(tex, path, opacity)
 	local ok, result = pcall(tex.SetTexture, tex, path)
 	local loaded = ok and result ~= false
 	if not loaded then pcall(tex.SetTexture, tex, C.ART_PATH) end
-	setTint(tex, 1, 1, 1, 1)
+	setTint(tex, 1, 1, 1, SBeGone.Appearance.ClampOpacity(opacity))
 	return loaded
 end
 
--- Preserve the supplied artwork's colors. Old color/opacity settings must
--- not tint the fox or reveal a spider through the cover. The imported TGA
--- is also opaque, so coverage does not depend on the fallback texture.
+-- Shipped artwork already contains its opaque backing. Draw it once for
+-- accurate opacity. Unverified custom images retain a backing too, ensuring
+-- transparent pixels cannot reduce coverage below the configured floor.
+function C.PaintCover(base, art, preset, opacity)
+	opacity = SBeGone.Appearance.ClampOpacity(opacity)
+	local loaded = art and C.PaintArt(art, preset.path, opacity)
+	local baseAlpha = (loaded and preset.id ~= "custom") and 0 or opacity
+	local baseOK = true
+	if base then
+		local ok, result = pcall(base.SetTexture, base, C.BACKDROP[1], C.BACKDROP[2], C.BACKDROP[3], baseAlpha)
+		baseOK = ok and result ~= false
+	end
+	return loaded and baseOK
+end
+
 function C.ApplyStyle()
-	local path = SBeGone.Appearance.Current().path
+	local preset, opacity = SBeGone.Appearance.Current(), SBeGone.Appearance.Opacity()
 	C.textureFailed = false
 	for i = 1, C.MAX do
 		local slot = C.pool[i]
-		if slot.base then
-			local ok, result = pcall(slot.base.SetTexture, slot.base, C.BACKDROP[1], C.BACKDROP[2], C.BACKDROP[3], 1)
-			if not ok or result == false then C.textureFailed = true end
-		end
-		if slot.art then
-			if not C.PaintArt(slot.art, path) then C.textureFailed = true end
-		end
+		if not C.PaintCover(slot.base, slot.art, preset, opacity) then C.textureFailed = true end
 	end
 end
 

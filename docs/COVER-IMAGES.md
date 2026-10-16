@@ -1,4 +1,4 @@
-# Choose your cover image (v0.3.1)
+# Choose your cover image (v0.3.2)
 
 Run `/spider config` to open the cover picker. Click a preset to preview it
 and update every cover immediately. The choice is saved in addon settings
@@ -25,9 +25,8 @@ the addon is disabled keeps it disabled. Tracking, cover sizing and the
 For simple backgrounds, these are starting suggestions to try according to
 personal preference. They have no animation, patterns or spider imagery.
 All shipped textures have opaque pixels throughout the square: the rounded
-shapes sit on a solid dark blue backing so their corners cannot reveal a
-model. Covers remain fully opaque and preserve picture colors regardless of
-old tint/opacity settings. Models can still extend beyond an undersized or
+shapes sit on a solid dark blue backing. Picture colors are preserved.
+Opacity defaults to 100%; at lower settings the scene can show through. Models can still extend beyond an undersized or
 misaligned cover; the nameplate-tracking limitations still apply.
 
 `/spider cover` lists choices and the selected image. `/spider options` is
@@ -37,6 +36,28 @@ the addon prints command-based instructions and tracking continues.
 Offline layout preview (client fonts/rendering may differ):
 
 ![Cover picker layout](art/config_preview.png)
+
+## Opacity
+
+The slider in `/spider config` runs only from **80% to 100%**, with 1% steps.
+The default is **100% (fully opaque)**. Changes update the checkerboard preview
+and existing covers immediately, save automatically and survive reloads.
+Choosing a different image preserves opacity; adjusting opacity does not
+replace an unfinished custom-image path. Lower opacity lets some of the
+scene show through, so use 100% for complete opacity within the cover.
+
+The range is enforced in the control, saved-settings migration and rendering,
+so a low or invalid old value cannot draw a cover below the 80% setting.
+Missing/invalid numeric values use 100%; values below 80% clamp to 80%, and
+values above 100% clamp to 100%. The editor and corpse warning are not faded.
+Custom images retain a backing and may appear more opaque than the selected
+value, protecting areas where an image contains transparent pixels.
+
+Command fallback: `/spider opacity 0.8` or `/spider opacity 1`; bare
+`/spider opacity` reports the current value. If the client rejects native
+Slider APIs, the picker keeps working with 80/85/90/95/100% buttons. Covers
+remain permanently click-through; only the explicit configuration window
+accepts slider input. Native slider rendering still needs partner validation.
 
 ## Use your own image
 

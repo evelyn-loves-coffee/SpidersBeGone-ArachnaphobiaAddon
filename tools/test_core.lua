@@ -116,6 +116,16 @@ local function makeFrame()
 	function f:SetFont(...) self.font = { ... } end
 	function f:SetAutoFocus(on) self.autoFocus = on end
 	function f:ClearFocus() self.focusCleared = true end
+	function f:SetOrientation(value) self.orientation = value end
+	function f:SetMinMaxValues(lo, hi) self.minimum, self.maximum = lo, hi end
+	function f:SetValueStep(value) self.step = value end
+	function f:SetObeyStepOnDrag(value) self.obeyStep = value end
+	function f:SetThumbTexture(value) self.thumb = value end
+	function f:GetValue() return self.value end
+	function f:SetValue(value)
+		self.value = math.max(self.minimum or 0, math.min(self.maximum or 1, value))
+		if self.rawScripts and self.rawScripts.OnValueChanged then self.rawScripts.OnValueChanged() end
+	end
 	function f:SetWidth(w) self.size = { w, self.size[2] } end
 	function f:SetHeight(h) self.size = { self.size[1], h } end
 	function f:GetWidth() return self.size[1] end
@@ -151,8 +161,13 @@ local function makeFrame()
 			if path == _G.__throwTexture then error("texture rejected", 0) end
 			self.texture = { ... }
 		end
-		function tex:SetVertexColor(...) self.tint = { ... } end
-		function tex:SetVertexAlpha(_) end
+		function tex:SetVertexColor(...)
+			if _G.__rejectVertexAlpha and select("#", ...) == 4 then error("RGB-only client", 0) end
+			self.tint = { ... }
+		end
+		function tex:SetVertexAlpha(value) self.tint[4] = value end
+		function tex:SetWidth(value) self.width = value end
+		function tex:SetHeight(value) self.height = value end
 		return tex
 	end
 	function f:CreateFontString()
@@ -1070,17 +1085,18 @@ for _, preset in ipairs(P.PRESETS) do
     local painted = true
     for _, slot in ipairs(C.pool) do
         if slot.art.texture[1] ~= preset.path or slot.art.tint[1] ~= 1 or slot.art.tint[4] ~= 1
-            or slot.base.texture[4] ~= 1 or not slot.base.allPoints then painted = false end
+            or slot.base.texture[4] ~= 0 or not slot.base.allPoints then painted = false end
     end
     check(painted and SBeGoneSettings.coverStyle == preset.id,
-        "appearance: immediately paints every cover with " .. preset.id .. " and opaque backing")
+        "appearance: immediately paints every cover with " .. preset.id .. " and baked-in backing")
 end
 check(C.pool[appearanceSlot].frame == beforeFrame and beforeFrame.parent == beforeParent
     and C.IsAllocated(appearanceSlot), "appearance: selection preserves existing frames and allocation")
 SBeGoneSettings.color, SBeGoneSettings.opacity = { 1, 0, 0 }, 0.1
 C.ApplyStyle()
-check(C.pool[appearanceSlot].art.tint[2] == 1 and C.pool[appearanceSlot].base.texture[4] == 1,
-    "appearance: legacy red tint and low opacity cannot discolor or expose models")
+check(C.pool[appearanceSlot].art.tint[2] == 1 and C.pool[appearanceSlot].art.tint[4] == 0.8,
+    "appearance: legacy red tint is ignored and low opacity is clamped to the floor")
+P.SetOpacity(1)
 capture(function() SBeGone.Slash("cover custom Interface/AddOns/MyCovers/my flower.tga") end)
 local customPath = "Interface\\AddOns\\MyCovers\\my flower.tga"
 check(SBeGoneSettings.coverStyle == "custom" and SBeGoneSettings.customCover == customPath
@@ -1173,6 +1189,110 @@ capture(function() SBeGone.Slash("cover sage") end)
 check(P.Current().id == "sage" and C.ShownCount() == 0,
     "config: command selection still works after a window API failure")
 check(legacyReads == 0, "appearance: configuration never queries mouseover or the cursor")
+
+-- ---- bounded opacity, including saved values and native slider scripts ----
+check(P.ClampOpacity(-10) == 0.8 and P.ClampOpacity(0.79) == 0.8
+    and P.ClampOpacity(1.2) == 1, "opacity: values outside the allowed range are clamped")
+check(P.ClampOpacity(nil) == 1 and P.ClampOpacity("bad") == 1 and P.ClampOpacity(0 / 0) == 1,
+    "opacity: missing, invalid and NaN values default to fully opaque")
+check(P.ClampOpacity(0.876) == 0.88, "opacity: values use one-percent steps")
+local opacitySave = { opacity = 0.1, coverStyle = "fox" }
+P.Normalize(opacitySave)
+check(opacitySave.opacity == 0.8, "opacity: saved values cannot restore transparency below eighty percent")
+P.Normalize({ opacity = 0.9 })
+for _, preset in ipairs(P.PRESETS) do
+    P.Select(preset.id)
+    for _, value in ipairs({ 0.8, 0.9, 1 }) do
+        P.SetOpacity(value)
+        local exact = true
+        for _, slot in ipairs(C.pool) do
+            -- Full opaque shipped texture + no second background alpha layer.
+            if slot.art.tint[4] ~= value or slot.base.texture[4] ~= 0 then exact = false end
+        end
+        check(exact, "opacity: " .. preset.id .. " renders at the selected " .. value .. " without doubling alpha")
+    end
+end
+P.Select("custom", "Interface\\AddOns\\MyCovers\\flower.tga")
+P.SetOpacity(0.8)
+local backed = true
+for _, slot in ipairs(C.pool) do
+    if slot.base.texture[4] ~= 0.8 or slot.art.tint[4] ~= 0.8 then backed = false end
+end
+check(backed, "opacity: transparent custom art retains a backing at the configured minimum")
+local fallbackBase = C.pool[1].base
+C.PaintCover(fallbackBase, nil, P.Current(), 0)
+check(fallbackBase.texture[4] == 0.8, "opacity: missing art cannot reduce the fallback below the minimum")
+__rejectVertexAlpha = true
+P.SetOpacity(0.83)
+check(C.pool[1].art.tint[4] == 0.83,
+    "opacity: RGB-only vertex-color clients use the separate alpha fallback")
+__rejectVertexAlpha = nil
+P.Select("fox")
+P.SetOpacity(1)
+O.Open()
+check(O.opacitySlider and O.opacitySlider.minimum == 0.8 and O.opacitySlider.maximum == 1
+    and O.opacitySlider.step == 0.01 and O.opacitySlider.orientation == "HORIZONTAL",
+    "config: opacity slider is restricted to 0.8-1.0 in one-percent steps")
+O.opacitySlider:SetValue(0.92)
+check(SBeGoneSettings.opacity == 0.92 and O.opacityValue.value == "92%"
+    and O.preview.tint[4] == 0.92, "config: native slider events update the setting, value and preview immediately")
+O.input:SetText("Unsubmitted custom image path")
+O.opacitySlider:SetValue(0.93)
+check(O.input:GetText() == "Unsubmitted custom image path",
+    "config: moving opacity never overwrites an unfinished custom-image entry")
+O.opacitySlider.value = 0.1
+O.opacitySlider.rawScripts.OnValueChanged()
+check(SBeGoneSettings.opacity == 0.8 and O.opacitySlider.value == 0.8,
+    "config: even an out-of-range native value is clamped and resynchronized")
+O.opacitySlider.value = 0.87
+O.opacitySlider.rawScripts.OnValueChanged(O.opacitySlider, 0.87)
+check(SBeGoneSettings.opacity == 0.87, "config: modern slider callback arguments also work")
+O.buttons.blue.scripts.OnClick()
+check(SBeGoneSettings.opacity == 0.87 and O.preview.tint[4] == 0.87,
+    "config: switching images preserves the chosen opacity")
+check(not SBeGoneSettings.enabled and C.ShownCount() == 0,
+    "opacity: changing the setting never enables or reveals disabled covers")
+capture(function() SBeGone.Slash("opacity 0.2") end)
+check(P.Opacity() == 0.8, "opacity: command fallback enforces the same lower bound")
+capture(function() SBeGone.Slash("opacity 2") end)
+check(P.Opacity() == 1, "opacity: command fallback enforces the same upper bound")
+SBeGoneSettings.opacity = 0.75
+SBeGone.ready = false
+SBeGone.OnEnterWorld()
+check(SBeGoneSettings.opacity == 0.8 and C.pool[1].art.tint[4] == 0.8,
+    "opacity: actual settings migration clamps and repaints a late-loaded low value")
+SBeGoneSettings.opacity = 0.91
+SBeGone.ready = false
+SBeGone.OnEnterWorld()
+check(SBeGoneSettings.opacity == 0.91, "opacity: a valid preference survives reload/restore")
+capture(function() SBeGone.Slash("enable") end)
+local opacitySlot = SBeGone.track.nameplate1
+local opacityFrame = C.pool[opacitySlot].frame
+local opacityParent = opacityFrame.parent
+P.SetOpacity(0.8)
+check(C.pool[opacitySlot].frame == opacityFrame and opacityFrame.parent == opacityParent
+    and opacityFrame.mouse == false, "opacity: live adjustment preserves native attachment and click-through")
+capture(function() SBeGone.Slash("disable") end)
+O.Close()
+
+-- Unsupported native Slider APIs must not take down the cover picker.
+O.frame = nil
+local sliderCreateFrame = CreateFrame
+CreateFrame = function(kind)
+    local frame = sliderCreateFrame(kind)
+    if kind == "Slider" then frame.SetMinMaxValues = nil end
+    return frame
+end
+O.Open()
+CreateFrame = sliderCreateFrame
+flushDisplay()
+check(O.frame:IsShown() and O.opacitySlider == nil and #O.opacityButtons == 5,
+    "config: a rejected Slider API retains the picker with bounded percentage buttons")
+O.opacityButtons[1].scripts.OnClick()
+check(P.Opacity() == 0.8, "config: fallback minimum button sets eighty percent")
+O.opacityButtons[5].scripts.OnClick()
+check(P.Opacity() == 1, "config: fallback maximum button sets full opacity")
+O.Close()
 
 -- Every cover, including recycled and quarantined frames, must have NEVER
 -- received EnableMouse(true), not merely be click-through at the end.

@@ -8,6 +8,7 @@ import hashlib
 import os
 import re
 import shutil
+import struct
 
 from lupa.lua51 import LuaRuntime
 
@@ -24,7 +25,7 @@ def main():
     output = root.parent / f"SpidersBeGone-{version}-fixed.zip"
     dependencies = [line.strip() for line in toc_text.splitlines()
                     if line.strip() and not line.startswith("#")]
-    sources = [toc_path, addon / "icon.tga"]
+    sources = [toc_path, addon / "icon.tga", addon / "preview-checker.tga"]
     # Only shipped presets belong in a release; never collect private custom art.
     sources.extend(addon / name for name in (
         "cover.tga", "cover-red.tga", "cover-blue.tga", "cover-sage.tga", "cover-charcoal.tga"))
@@ -32,6 +33,14 @@ def main():
     for source in sources:
         if not source.resolve().is_relative_to(addon.resolve()) or not source.is_file():
             raise ValueError(f"Invalid addon dependency: {source}")
+        if source.name.startswith("cover") and source.suffix == ".tga":
+            # PaintCover fades one image layer for shipped art. Its full-frame
+            # backing must therefore already be baked into an opaque RGB file.
+            data = source.read_bytes()
+            width, height = struct.unpack_from("<HH", data, 12)
+            assert data[2] == 2 and data[16] == 24, source.name
+            assert width > 0 and height > 0 and width & (width - 1) == 0 and height & (height - 1) == 0
+            assert len(data) >= 18 + width * height * 3
 
     with ZipFile(output, "w", compression=ZIP_DEFLATED) as archive:
         for source in sorted(set(sources)):

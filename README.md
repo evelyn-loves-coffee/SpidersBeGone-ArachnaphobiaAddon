@@ -4,9 +4,9 @@ Addon for **World of Warcraft Forever** (classic 1.x-line client, v1.60.1) that
 covers spider models with a nameplate-attached UI element. UI-layer only: no model
 swaps, no game-file modification.
 
-**Status: v0.3.1 — core tracking verified in game 2026-10-16 (Tirisfal);
-only automatic nameplate covers remain. The fox, background presets, custom
-images and brief corpse warning are retained. The new build passes offline
+**Status: v0.3.2 — core tracking verified in game 2026-10-16 (Tirisfal);
+automatic nameplate covers, image choices and a bounded 80-100% opacity
+slider. The fox, simple backgrounds, custom images and brief corpse warning remain. The new build passes offline
 checks; live validation belongs on the partner's test machine.**
 Tracked covers are now **children of the spider's nameplate**, so native
 movement and scale apply to the cover and its offset between polling ticks.
@@ -36,13 +36,14 @@ for the historical design and client-probe records.
 Extract the fixed ZIP and replace the `SpidersBeGone/` folder in your client's
 `Interface/AddOns/` directory, then log in or `/reload`. The `.toc` must be at
 `Interface/AddOns/SpidersBeGone/SpidersBeGone.toc`, without an extra nested
-repository folder. `/spider` should report **v0.3.1**.
+repository folder. `/spider` should report **v0.3.2**.
 
 Choose your cover with **`/spider config`**. The default is the supplied fox
 illustration; alternatives are muted red, blue and sage squircles, plain
 charcoal, or your own local image. Choices update existing covers immediately
-and save automatically. Every cover has an opaque backing and preserves its
-original colors. See [the image guide](docs/COVER-IMAGES.md) for previews, commands
+and save automatically. The picker also has an **opacity slider from 80% to
+100%**, in 1% steps, defaulting to fully opaque. Its preview updates immediately;
+lower opacity lets some of the scene show through. Artwork keeps its original colors. See [the image guide](docs/COVER-IMAGES.md) for previews, commands
 and custom-image preparation. Tracking stays click-through and requires no
 mouseover; the 1.75-second corpse warning is unchanged.
 
@@ -129,6 +130,7 @@ review and Classic filtering rules are in [docs/DATA-SOURCES.md](docs/DATA-SOURC
 | :-- | :-- |
 | `/spider` | diagnostics: version, build, enabled, tracking, covers shown, limited / paused |
 | `/spider config` | open the cover picker with preview, presets and custom-image path |
+| `/spider opacity [0.8-1]` | report or set bounded cover opacity; also available in the picker |
 | `/spider cover <choice>` | select `fox`, `red`, `blue`, `sage`, `charcoal`, or `custom <local .tga path>` |
 | `/spider enable` | enable tracking and retry paused coverage; enabled by default |
 | `/spider disable` | stop tracking and hide every cover; stays disabled after reload |
@@ -145,9 +147,9 @@ review and Classic filtering rules are in [docs/DATA-SOURCES.md](docs/DATA-SOURC
 
 `/spider on` and `/spider off` remain compatibility aliases for enable/disable.
 
-**Upgrade to v0.3.1:** old screen-cover layouts and editing modes are deleted
+**Upgrade from before v0.3.1:** old screen-cover layouts and editing modes are deleted
 for every character, including settings loaded late by the client. The
-selected image, custom path, enabled preference and tracking calibration are
+selected image, custom path, enabled preference, opacity and tracking calibration are
 preserved. Cover positions are never saved; covers are rebuilt from live
 nameplates. The removed layout/reset commands are no longer accepted.
 

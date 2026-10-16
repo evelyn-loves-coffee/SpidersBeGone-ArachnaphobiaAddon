@@ -39,6 +39,14 @@ def main():
         (ROOT / "SpidersBeGone" / f"cover-{name}.tga").write_bytes(header + body)
         write_png(str(previews / f"cover-{name}_preview.png"), SIZE, SIZE, rows)
     print("Generated red, blue, sage and charcoal presets with opaque backings")
+    # Editor-only transparency preview; never used as a model cover.
+    header = struct.pack("<BBBHHBHHHHBB", 0, 0, 2, 0, 0, 0, 0, 0, 64, 64, 24, 0x20)
+    body = bytearray()
+    for y in range(64):
+        for x in range(64):
+            color = (88, 94, 108) if (x // 8 + y // 8) % 2 else (134, 140, 154)
+            body.extend(reversed(color))
+    (ROOT / "SpidersBeGone" / "preview-checker.tga").write_bytes(header + body)
 
 
 if __name__ == "__main__":
