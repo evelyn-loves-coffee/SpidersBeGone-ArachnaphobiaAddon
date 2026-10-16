@@ -792,6 +792,25 @@ the §12 probe set on the release client if the interface number changes
   plate-measurement attempt fail the build. Bumped **0.2.3**, installed,
   `diff -r` clean.
   **Next: the M1–M8 round in §Resume (round 4).**
+- **2026-10-16 (in-game round):** v0.2.5 in-game verification (Tirisfal).
+  Owner confirmed **tracking works** — covers follow the spider's nameplate
+  through camera movement and zoom. Two defects found:
+  (1) **Stale SavedVariables left `autoTrack` nil.** The client applies
+  SavedVariables by *replacing* the whole `SBeGoneSettings` table, possibly
+  after the scripts ran; the owner's save predated M3.5 (no
+  `autoTrack`/`trackScale`/`drop` keys), so the bare `if s.autoTrack` read
+  nil = off (selftest: `auto=nil` while spiders were clearly visible).
+  (2) **Cover sat too low**: at `drop` 0.9 the model's body sat above the
+  cover's top edge (screenshot measurement, Young Night Web Spider).
+  Both fixed in **v0.2.6**: the default merge re-runs at the restore point
+  (after the SBG13 guard), and `drop` is recalibrated **0.9 → 0.5** (in
+  cover-height units, so distance-invariant). The v0.2.6 tracking-only
+  refactor (schema 3) subsumes defect (1) for future saves: retired
+  `autoTrack`/`stickyCovers` flags are removed and cursor covers migrated
+  out of saved layouts, also for SavedVariables arriving after script load.
+  Geometry test expectations recalibrated; suite passes against packaged
+  sources. Deployed to `AddOns/`, `diff -r` clean. Remaining live check:
+  the `enable`/`disable` reload path on this build.
 
 ## Next session, in order
 

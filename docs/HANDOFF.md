@@ -1,7 +1,9 @@
 # Handoff: v0.2.6 tracking-only covers
 
 Current implementation and controls are in [TRACKING-ONLY.md](TRACKING-ONLY.md).
-The packaged Lua 5.1 suite passes offline; live Forever validation is pending.
+The packaged Lua 5.1 suite passes offline. Core tracking was in-game
+verified 2026-10-16 (below); the tracking-only enable/disable path is the
+remaining live check.
 
 ## Current behavior
 
@@ -61,3 +63,25 @@ See [DATA-SOURCES.md](DATA-SOURCES.md) for evidence and licensing decisions.
 Earlier probe results and superseded controls are retained in
 [HANDOFF-HISTORY.md](HANDOFF-HISTORY.md), [PLAN.md](PLAN.md), and the older
 release notes. Do not reintroduce the removed cursor detector from them.
+
+## In-game verification (2026-10-16, Tirisfal)
+
+Round run on the v0.2.5-based build (nameplate tracking, before the
+tracking-only refactor):
+
+- **Tracking confirmed**: covers attach to spider nameplates and follow the
+  model with camera movement and zoom.
+- **Stale-save bug found and fixed**: the owner's selftest read `auto=nil`
+  with clearly visible spiders. The client applies SavedVariables by
+  *replacing* the whole settings table, possibly after script load; the
+  owner's save predated M3.5 and had no `autoTrack`/`trackScale`/`drop`
+  keys. This build handles the same gap: schema-3 migration runs at the
+  restore point too (`EnsureSettings()` after the SBG13 load-order guard),
+  removing the retired mode flags and filling missing tracking keys.
+- **`drop` calibrated 0.9 → 0.5**: screenshot measurement (Young Night Web
+  Spider, Tirisfal) put the model's body above the cover's top edge at 0.9;
+  at 0.5 the whole model (hanging ≈0.2–0.3 cover-heights below plate
+  centre) is inside the cover with minimal nameplate overlap. `drop` is in
+  cover-height units, so the calibration is distance-invariant.
+- Still to verify on this tracking-only build in the live client: the
+  `enable`/`disable` reload path and migration of a real pre-schema-3 save.

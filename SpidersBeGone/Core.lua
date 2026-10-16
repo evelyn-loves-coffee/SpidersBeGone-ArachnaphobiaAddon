@@ -58,7 +58,12 @@ local DEFAULTS = {
 	covers = {}, -- per character: { init = true, list = { {x,y,w,h,kind}, ... } }
 	-- Native nameplate tracking is the only detection mode.
 	trackScale = 1.6,   -- cover local size = plate local width x this
-	drop = 0.9,         -- centre the cover this many cover-heights below the plate
+	-- drop: centre the cover this many cover-heights below the plate.
+	-- Calibrated in game 2026-10-16 (owner screenshot, Tirisfal, Young Night
+	-- Web Spider): at 0.9 the model sat above the cover's top edge; at 0.5
+	-- the whole model (hanging ~0.2-0.3 cover-heights below plate centre) is
+	-- inside the cover with only minimal nameplate overlap.
+	drop = 0.5,
 	trackRelease = 0.5, -- seconds a cover survives losing its plate (anti-flicker)
 	arrange = false,    -- true = covers take the mouse so they can be dragged
 	debug = false,
@@ -538,7 +543,7 @@ function SBeGone.TrackTick()
 	local s = SBeGoneSettings
 	local t = SBeGone.track
 	local grow = tonumber(s.trackScale) or 1.6
-	local dropK = tonumber(s.drop) or 0.9
+	local dropK = tonumber(s.drop) or 0.5
 	local grace = math.max(1, math.floor(((tonumber(s.trackRelease) or 0.5)
 		/ tickInterval) + 0.5))
 	local ourScale = SBeGone.OurScale()

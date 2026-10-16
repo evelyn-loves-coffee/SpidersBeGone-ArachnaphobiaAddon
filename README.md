@@ -4,7 +4,8 @@ Addon for **World of Warcraft Forever** (classic 1.x-line client, v1.60.1) that
 covers spider models with a nameplate-attached UI element. UI-layer only: no model
 swaps, no game-file modification.
 
-**Status: v0.2.6 tracking only, offline tested; in-game verification pending.**
+**Status: v0.2.6 tracking only — tracking in-game verified 2026-10-16 (Tirisfal);
+`drop` default calibrated in the same round.**
 Tracked covers are now **children of the spider's nameplate**, so native
 movement and scale apply to the cover and its offset between polling ticks.
 The public unit-to-nameplate mapper is preferred; a metadata fallback requires
@@ -39,7 +40,7 @@ Enable enemy nameplates in the game. The addon starts enabled on a new install;
 `/spider enable` also enables tracking immediately and retries paused coverage.
 `/spider disable` stops tracking and hides every cover, including manual shields.
 No mouseover or separate auto command is needed. Tune coverage with `/spider grow 2`
-and `/spider drop 0.9` as needed.
+and `/spider drop 0.5` as needed.
 
 The cover follows the visible nameplate. Stacking or screen-edge clamping by
 the game can move a nameplate away from the model; this client exposes no usable
@@ -97,7 +98,7 @@ review and Classic filtering rules are in [docs/DATA-SOURCES.md](docs/DATA-SOURC
 | `/spider parks N` | set the number of pre-parked shields (`0` removes them) |
 | `/spider arrange [on\|off]` | drag mode: covers take the mouse so you can move them; never survives a relog |
 | `/spider grow [N]` | how much bigger than the nameplate a cover is (`0.2`–`6`, default `1.6`) |
-| `/spider drop [N]` | how far below the nameplate it sits (`0`–`4`, default `0.9` — models hang below their plate) |
+| `/spider drop [N]` | how far below the nameplate it sits (`0`–`4`, default `0.5` — calibrated in game 2026-10-16) |
 | `/spider size [N]` | fixed cover size in UI units (`16`–`512`) for manual shields and unavailable-geometry fallback |
 | `/spider name <name>` | "cover this one too": add an **exact** creature name (spaces allowed) |
 | `/spider names` | list the names you added |

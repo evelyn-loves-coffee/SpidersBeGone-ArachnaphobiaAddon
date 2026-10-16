@@ -650,8 +650,9 @@ check(trackedFrame:GetParent() == plateA,
 -- 160 plate-local units render as 80 UI units at scale 0.5.
 check(SBeGone.Cover.pool[trA].w == 160 and trackedFrame:GetWidth() * trackedFrame:GetEffectiveScale() == 80,
 	"track: plate-local cover size inherits distance scale exactly once")
--- drop = 0.9 cover-heights below the plate (models hang below their nameplate)
-check(ptA and math.abs((ptA.y or 0) * trackedFrame:GetEffectiveScale() + 72) < 0.001,
+-- drop = 0.5 cover-heights below the plate (calibrated in game 2026-10-16:
+-- at 0.9 the model sat above the cover's top edge)
+check(ptA and math.abs((ptA.y or 0) * trackedFrame:GetEffectiveScale() + 40) < 0.001,
 	"track: centred below the plate by the drop factor")
 
 -- The renderer owns plate coordinates; the addon may not query them. Move
@@ -667,17 +668,17 @@ local function renderedCenter(frame)
 end
 plateA.nativeX, plateA.nativeY = 500, 400
 local rx, ry = renderedCenter(trackedFrame)
-check(rx == 500 and ry == 328, "track: native transform places the cover below its spider plate")
+check(rx == 500 and ry == 360, "track: native transform places the cover below its spider plate")
 plateA.nativeX, plateA.nativeY = 750, 350
 rx, ry = renderedCenter(trackedFrame)
-check(rx == 750 and ry == 278,
+check(rx == 750 and ry == 310,
 	"track: native model movement moves its cover before the next polling tick")
 
 -- Perspective changes between the 10 Hz scans: native parenting must scale
 -- BOTH the disc and its offset immediately, without another Lua update.
 plateA.effScale = 1
 check(trackedFrame:GetWidth() * trackedFrame:GetEffectiveScale() == 160
-	and ptA.y * trackedFrame:GetEffectiveScale() == -144,
+	and ptA.y * trackedFrame:GetEffectiveScale() == -80,
 	"track: camera zoom scales the cover and drop between polling ticks")
 SBeGone.Tick()
 check(trackedFrame:GetWidth() == 160,
@@ -1256,6 +1257,53 @@ check(SBeGoneSettings.enabled == true and SBeGoneSettings.parkCount == 0
     and SBeGone.track.nameplate1 ~= nil and SBeGone.Cover.ShownCount() == 1,
     "defaults: enabled tracking needs no pointer input, command or pre-parked covers")
 check(legacyReads == 0, "tracking only: no unit API or cursor read used pointer input anywhere in the suite")
+
+-- ---- Stale SavedVariables are re-migrated at the restore point ----------
+-- Owner report 2026-10-16 (selftest: auto=nil with clearly visible spiders):
+-- the client applies SavedVariables by REPLACING the whole settings table,
+-- possibly after the scripts ran, and a save written before M3.5 has no
+-- trackScale/drop/trackRelease keys at all (and still carries the retired
+-- stickyCovers flag). The script-load migration is gone with the replaced
+-- table, so tracking would run with nil settings. The migration must run
+-- again at the restore point: fill missing keys, remove retired flags,
+-- migrate the saved lists.
+clearUnits()
+SBeGone.ready = false
+SBeGone.char = nil
+SBeGone.sawVariablesLoaded = true
+SBeGone.loadSnapshot.settingsPresent = true
+local staleCovers = SBeGoneSettings.covers
+staleCovers["StaleMarker"] = {
+	init = true,
+	list = { { x = 10, y = 20, w = 80, h = 80, kind = "park" } },
+}
+SBeGoneSettings = {
+	version = 2, stickyCovers = true,
+	color = { 0.55, 0.12, 0.12 }, opacity = 0.85, coverSize = 96,
+	parkCount = 8, namePatterns = {}, extraNames = {},
+	requireHostile = false, minLevel = 1, maxLevel = 99,
+	covers = staleCovers,
+}
+setUnit("player", { name = "StaleMerge", class = "Warrior" })
+SBeGone.OnEnterWorld()
+check(SBeGone.ready and SBeGone.char == "StaleMerge",
+	"settings: restore proceeds on a stale pre-M3.5 save")
+check(SBeGoneSettings.enabled == true,
+	"settings: stale save migrated — tracking enabled by default (was absent)")
+check(SBeGoneSettings.autoTrack == nil and SBeGoneSettings.stickyCovers == nil,
+	"settings: stale save migrated — retired mode flags removed (schema 3)")
+check(SBeGoneSettings.trackScale == 1.6,
+	"settings: stale save re-merged — trackScale default restored")
+check(SBeGoneSettings.drop == 0.5,
+	"settings: stale save re-merged — drop default restored (2026-10-16 calibration)")
+check(SBeGoneSettings.parkCount == 8,
+	"settings: stale save re-merged — valid user value kept, not reset")
+check(SBeGoneSettings.arrange == false,
+	"settings: stale save re-merged — arrange default restored")
+check(SBeGoneSettings.covers == staleCovers
+	and type(SBeGoneSettings.covers["StaleMarker"]) == "table"
+	and #SBeGoneSettings.covers["StaleMarker"].list == 1,
+	"settings: merge fills keys in place, keeping the saved per-character lists")
 
 if fails > 0 then
 	error(fails .. " test(s) FAILED", 0)
