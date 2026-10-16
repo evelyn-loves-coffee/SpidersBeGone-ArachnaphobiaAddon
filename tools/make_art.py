@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Generates the original art for the Spiders Be Gone addon.
+"""Generates the original addon icon without overwriting the supplied cover.
 
 Outputs (relative to the repo root):
   SpidersBeGone/icon.tga   32x32 24-bit TGA - "no spider" addon icon
-  SpidersBeGone/cover.tga  64x64 32-bit TGA - soft tintable cover patch
   docs/art/icon_preview.png    scaled preview of the icon
-  docs/art/cover_preview.png   preview of the cover (alpha on checker)
 
+The fox cover is converted separately by tools/import_cover.py.
 Pure standard library; no external image dependencies. Re-run any time:
   python3 tools/make_art.py
 """
@@ -40,11 +39,6 @@ def dist_to_segment(px, py, ax, ay, bx, by):
     t = max(0.0, min(1.0, t))
     dx, dy = px - (ax + t * vx), py - (ay + t * vy)
     return math.sqrt(dx * dx + dy * dy)
-
-
-def smoothstep(t):
-    t = max(0.0, min(1.0, t))
-    return t * t * (3.0 - 2.0 * t)
 
 
 # ---------------------------------------------------------------- icon 32x32
@@ -103,32 +97,6 @@ def icon_pixel(i, j):
     return col
 
 
-# ----------------------------------------------------------- cover 64x64
-
-def cover_pixel(i, j):
-    """Pixel (i, j) of the 64x64 cover patch, y down. RGBA."""
-    x, y = i + 0.5, j + 0.5
-    # squircle radius (superellipse n=4)
-    r = (abs(x - 31.5) / 29.5) ** 4 + (abs(y - 31.5) / 29.5) ** 4
-    r = r ** 0.25
-    if r <= 0.82:
-        a = 255
-    elif r >= 1.0:
-        a = 0
-    else:
-        a = int(255 * smoothstep((1.0 - r) / 0.18))
-    if a <= 0:
-        return (255, 255, 255, 0)
-    # soft vertical gradient + faint top highlight
-    g = 1.0 - 0.10 * (y / 63.0)
-    h = max(0.0, 1.0 - math.sqrt((x - 31.5) ** 2 + (y - 24.0) ** 2) / 18.0)
-    base = (236, 240, 246)
-    col = tuple(
-        max(0, min(255, int(c * g + 14 * h))) for c in base
-    )
-    return (col[0], col[1], col[2], a)
-
-
 # ---------------------------------------------------------------- writers
 
 def write_tga(path, w, h, rows, depth):
@@ -182,23 +150,6 @@ def upscale(rows, k):
     return out
 
 
-def checker_bg(rows, size, sq=8):
-    """Composite an alpha row set over a checkerboard (preview only)."""
-    out = []
-    for j in range(size):
-        row = []
-        for i in range(size):
-            r, g, b, a = rows[j][i]
-            if a == 0:
-                base = (200, 200, 200) if (i // sq + j // sq) % 2 == 0 else (160, 160, 160)
-                row.append(base)
-            else:
-                bg = (200, 200, 200) if (i // sq + j // sq) % 2 == 0 else (160, 160, 160)
-                row.append(tuple(int(bg[c] * (1 - a / 255.0) + [r, g, b][c] * a / 255.0) for c in range(3)))
-        out.append(row)
-    return out
-
-
 # ------------------------------------------------------------------- main
 
 def main():
@@ -209,13 +160,7 @@ def main():
     write_tga(os.path.join(ROOT, "SpidersBeGone", "icon.tga"), 32, 32, icon, 24)
     write_png(os.path.join(ROOT, "docs", "art", "icon_preview.png"), 32 * 8, 32 * 8, upscale(icon, 8))
 
-    cover = [[cover_pixel(i, j) for i in range(64)] for j in range(64)]
-    write_tga(os.path.join(ROOT, "SpidersBeGone", "cover.tga"), 64, 64, cover, 32)
-    write_png(
-        os.path.join(ROOT, "docs", "art", "cover_preview.png"),
-        64, 64, checker_bg(cover, 64),
-    )
-    print("wrote SpidersBeGone/icon.tga, SpidersBeGone/cover.tga, docs/art/*_preview.png")
+    print("wrote SpidersBeGone/icon.tga and docs/art/icon_preview.png; cover unchanged")
 
 
 if __name__ == "__main__":

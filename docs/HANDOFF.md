@@ -1,12 +1,12 @@
-# Handoff: v0.2.8 tracking and automatic corpse warning
+# Handoff: v0.3.0 cover picker, tracking and automatic corpse warning
 
 Current implementation and controls are in [TRACKING-ONLY.md](TRACKING-ONLY.md)
 (v0.2.6 snapshot; v0.2.7 added the near-field boost, and v0.2.8 adds the
-corpse warning). The
+corpse warning; v0.3.0 adds cover selection and approved fox artwork). The
 packaged Lua 5.1 suite passes offline. Core tracking was in-game verified
 2026-10-16 (below); the remaining live checks are the tracking-only
-enable/disable path, migration of a real pre-schema-3 save, and calibrating
-the near-field threshold in game.
+enable/disable path, migration of a real pre-schema-3 save, calibrating
+the near-field threshold, and native rendering/input for the new picker.
 
 After pulling `2777b0d` and integrating `75571b9`, added the centered LOOK AWAY popup for
 observed spider deaths. It is click-through and expires after 1.75 seconds.
@@ -16,6 +16,15 @@ and native-frame reuse cleanup; the new popup needs live validation. See
 [CORPSE-HANDLING.md](CORPSE-HANDLING.md) for detection and limitations.
 
 ## Current behavior
+
+- **Cover picker (v0.3.0):** `/spider config` opens a preview, five bundled
+  choices (fox, red, blue, sage, charcoal) and a custom local texture field.
+  `/spider cover <choice>` also works if the client rejects window APIs.
+  The selected image persists and updates existing covers without changing
+  tracking, allocation or disabled state. Original colors and full opacity
+  are enforced; the fallback fills the entire frame. See [COVER-IMAGES.md](COVER-IMAGES.md).
+  The user explicitly authorized publishing the supplied fox with this addon
+  on 2026-10-16. Additional supplied images still need publication permission.
 
 - Tracking is the only automatic detection path. No targeting or mouseover
   input is required or queried. Covers attach to native accessible plates.
@@ -46,6 +55,8 @@ and native-frame reuse cleanup; the new popup needs live validation. See
 
 ## Files and verification
 
+- `SpidersBeGone/Appearance.lua`: preset registry, saved choice and local-path validation.
+- `SpidersBeGone/Config.lua`: optional picker with preview; no window at startup.
 - `SpidersBeGone/Core.lua`: commands, settings migration, scan and lifecycle.
 - `SpidersBeGone/DeathWarning.lua`: original centered UI, 1.75-second timeout,
   deduplication, guarded death queries/events and recent-GUID matching.
@@ -109,22 +120,29 @@ tracking-only refactor):
   migration of a real pre-schema-3 save, and the near-field threshold
   (`/spider debug on` → walk far-to-close at a spider → `/spider near N`).
 
-## Next in-game round (v0.2.8)
+## Next in-game round (v0.3.0)
 
 Upstream's last installed-state report was v0.2.7, commit `75571b9`, with
 `AddOns/` in sync and 221 packaged-source checks. This session pulled its
 follow-up checklist commit `3ebe8a7` and preserved both updates.
-The current combined build is v0.2.8 with **250 packaged-source checks** and
-ZIP `SpidersBeGone-0.2.8-fixed.zip`; it has not been installed in game here.
+The current combined build is v0.3.0 with **288 packaged-source checks** and
+ZIP `SpidersBeGone-0.3.0-fixed.zip`; it has not been installed in game here.
 
 In order:
 
-1. Install the v0.2.8 addon folder, then `/reload`; bare `/spider` must report
-   **v0.2.8** with `grow=1.6 drop=0.5
+1. Install the v0.3.0 addon folder, then `/reload`; bare `/spider` must report
+   **v0.3.0** with `grow=1.6 drop=0.5
    near=0`, tracking enabled, `limited=false`.
 2. **Regression re-check** (30 s): Tirisfal, walk up on spiders — covers
-   attach, follow movement and zoom, ground still click-through.
-3. **Near-field calibration (new):**
+   attach, show the fox in its original colors on an opaque dark blue square,
+   follow movement and zoom, ground still click-through. Check old saved tint/
+   opacity values cannot recolor it or let the model show through.
+3. **Cover picker:** `/spider config`, click each preset and check the
+   preview and live covers change immediately. Enter a prepared local TGA
+   path; verify its preview and persistence after `/reload`. Disable covers
+   and change the image; covers must stay hidden. Verify the picker closes
+   and releases keyboard focus. Command fallback: `/spider cover red`.
+4. **Near-field calibration:**
    - `/spider debug on`
    - Stand as close to a spider as practical (the distance where the legs
      showed in the 2026-10-16 screenshot); read the `SBG| near:` line →
@@ -135,16 +153,16 @@ In order:
    - Walk in again: the legs must be inside the cover, and the cover must
      keep tracking while moving/zooming. The size step at the threshold is
      by design binary; if it looks too abrupt, lower `/spider grow` slightly.
-4. **Enable/disable path** (leftover from the v0.2.6 round):
+5. **Enable/disable path** (leftover from the v0.2.6 round):
    `/spider disable` → every cover hides; `/reload` → still disabled, no
    covers; `/spider enable` → tracking resumes immediately.
-5. **Real stale-save migration:** the owner's live save is pre-schema-3 (no
+6. **Real stale-save migration:** the owner's live save is pre-schema-3 (no
    `autoTrack`/`trackScale`/`drop`/`near*` keys). It is migrated
    automatically on first login of a v0.2.6+ build — confirm step 1's
    reported defaults, tracking on, and **no ghost cursor covers** from the
    old mode. (The Lua suite already covers the same path with a simulated
    stale save.)
-6. **Corpse warning:** with the pointer elsewhere, kill a tracked spider.
+7. **Corpse warning:** with the pointer elsewhere, kill a tracked spider.
    Verify the centered LOOK AWAY popup lasts 1.5 to 2 seconds, remains
    click-through, and can appear even when the plate disappears. Kill two
    spiders in quick succession; a stale timer must not hide the newer

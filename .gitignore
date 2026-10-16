@@ -12,3 +12,7 @@ dist/
 
 # Session artifact (git fetch recency, per ~/Apps/AGENTS.md)
 .git-fetch-timestamp
+
+# Local Python caches and personal custom images are never release inputs.
+__pycache__/
+SpidersBeGone/Custom/

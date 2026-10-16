@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: Spiders Be Gone
 ## Notes: UI-layer spider covers for arachnophobia (WoW Forever 1.60.1)
-## Version: 0.2.8
+## Version: 0.3.0
 ## Author: evelyn-loves-coffee
 ## IconTexture: Interface\AddOns\SpidersBeGone\icon.tga
 ## SavedVariables: SBeGoneSettings
@@ -9,5 +9,7 @@ SpiderDB.lua
 Access.lua
 Units.lua
 DeathWarning.lua
+Appearance.lua
 Cover.lua
+Config.lua
 Core.lua

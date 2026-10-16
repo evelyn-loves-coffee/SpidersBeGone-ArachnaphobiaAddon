@@ -114,6 +114,11 @@ local function makeFrame()
 	-- same way it fails in-game.
 	function f:EnableMouse(on) self.mouse = on end
 	function f:SetMovable(_) end
+	function f:SetText(value) self.text = value end
+	function f:GetText() return self.text or "" end
+	function f:SetFont(...) self.font = { ... } end
+	function f:SetAutoFocus(on) self.autoFocus = on end
+	function f:ClearFocus() self.focusCleared = true end
 	function f:SetWidth(w) self.size = { w, self.size[2] } end
 	function f:SetHeight(h) self.size = { self.size[1], h } end
 	function f:GetWidth() return self.size[1] end
@@ -153,10 +158,15 @@ local function makeFrame()
 			error("bad argument #3 to 'CreateTexture' (Usage: local texture = self:CreateTexture(params))", 0)
 		end
 		local tex = {}
-		function tex:SetAllPoints(_) end
+		function tex:SetAllPoints(_) self.allPoints = true end
 		function tex:SetPoint(...) end
-		function tex:SetTexture(...) end
-		function tex:SetVertexColor(...) end
+		function tex:SetTexture(...)
+			local path = ...
+			if path == _G.__unloadableTexture then return false end
+			if path == _G.__throwTexture then error("texture rejected", 0) end
+			self.texture = { ... }
+		end
+		function tex:SetVertexColor(...) self.tint = { ... } end
 		function tex:SetVertexAlpha(_) end
 		return tex
 	end
@@ -207,7 +217,9 @@ dofile("SpidersBeGone/SpiderDB.lua")
 dofile("SpidersBeGone/Access.lua")
 dofile("SpidersBeGone/Units.lua")
 dofile("SpidersBeGone/DeathWarning.lua")
+dofile("SpidersBeGone/Appearance.lua")
 dofile("SpidersBeGone/Cover.lua")
+dofile("SpidersBeGone/Config.lua")
 dofile("SpidersBeGone/Core.lua")
 
 --------------------------------------------------------------------- checks
@@ -279,7 +291,7 @@ out = capture(function() SlashCmdList["SPIDER"]("bogus") end)
 check(#out == 1 and out[1]:find("unknown subcommand 'bogus'") ~= nil,
 	"slash: unknown subcommand message")
 out = capture(function() SlashCmdList["SPIDER"]("help") end)
-check(#out == 1 and out[1]:find("enable / disable / toggle / clear / release") ~= nil
+check(#out == 2 and out[1]:find("enable / disable / toggle / clear / release") ~= nil
 	and out[1]:find("on|") == nil,
 	"slash: help usage line (pipe-free - chat filter, SBG11)")
 
@@ -1537,6 +1549,143 @@ check(recentCount <= W.MAX_RECENT, "corpse warning: recent observations stay bou
 W.Clear()
 check(legacyReads == 0, "corpse warning: all paths remain free of mouseover and cursor queries")
 GetTime, C_Timer.After = originalTime, originalAfter
+
+-- ---- appearance selection / persistence / configuration ----------------
+local P, C, O = SBeGone.Appearance, SBeGone.Cover, SBeGone.Config
+check(P.Current().id == "fox", "appearance: missing preference defaults to the fox")
+local normalized = { coverStyle = "unknown", customCover = 42 }
+P.Normalize(normalized)
+check(normalized.coverStyle == "fox" and normalized.customCover == "",
+    "appearance: corrupt saved choices fall back without a broken texture path")
+normalized = { coverStyle = "CUSTOM", customCover = "Interface/AddOns/MyCovers/flower.tga" }
+P.Normalize(normalized)
+check(normalized.coverStyle == "custom" and normalized.customCover == "Interface\\AddOns\\MyCovers\\flower.tga",
+    "appearance: valid saved custom choices survive normalization")
+normalized.customCover = "https://example.org/flower.tga"
+P.Normalize(normalized)
+check(normalized.coverStyle == "fox", "appearance: invalid saved custom path returns to the fox")
+check(P.CustomPath(' "Interface/AddOns/My Covers/flower.tga" ') == "Interface\\AddOns\\My Covers\\flower.tga",
+    "appearance: local paths accept slash separators, spaces and surrounding quotes")
+for _, path in ipairs({ "C:\\Pictures\\flower.tga", "https://example.org/flower.tga",
+    "Interface\\AddOns\\..\\flower.tga", "Interface\\AddOns\\MyCovers\\flower.png",
+    "Interface\\AddOns\\MyCovers\\a\n.tga", "Interface\\AddOns\\MyCovers\\\\flower.tga" }) do
+    check(P.CustomPath(path) == nil, "appearance: rejects unsupported path " .. path:gsub("\n", "(newline)"))
+end
+
+-- Changing appearance updates both allocated and spare frames in place.
+SBeGoneSettings.enabled = true
+C.ClearAll()
+local appearanceSlot = C.Allocate("park", 250, 300)
+flushDisplay()
+local beforeFrame, beforeParent = C.pool[appearanceSlot].frame, C.pool[appearanceSlot].frame.parent
+for _, preset in ipairs(P.PRESETS) do
+    capture(function() SBeGone.Slash("cover " .. preset.id) end)
+    local painted = true
+    for _, slot in ipairs(C.pool) do
+        if slot.art.texture[1] ~= preset.path or slot.art.tint[1] ~= 1 or slot.art.tint[4] ~= 1
+            or slot.base.texture[4] ~= 1 or not slot.base.allPoints then painted = false end
+    end
+    check(painted and SBeGoneSettings.coverStyle == preset.id,
+        "appearance: immediately paints every cover with " .. preset.id .. " and opaque backing")
+end
+check(C.pool[appearanceSlot].frame == beforeFrame and beforeFrame.parent == beforeParent
+    and C.IsAllocated(appearanceSlot), "appearance: selection preserves existing frames and allocation")
+SBeGoneSettings.color, SBeGoneSettings.opacity = { 1, 0, 0 }, 0.1
+C.ApplyStyle()
+check(C.pool[appearanceSlot].art.tint[2] == 1 and C.pool[appearanceSlot].base.texture[4] == 1,
+    "appearance: legacy red tint and low opacity cannot discolor or expose models")
+capture(function() SBeGone.Slash("cover custom Interface/AddOns/MyCovers/my flower.tga") end)
+local customPath = "Interface\\AddOns\\MyCovers\\my flower.tga"
+check(SBeGoneSettings.coverStyle == "custom" and SBeGoneSettings.customCover == customPath
+    and C.pool[appearanceSlot].art.texture[1] == customPath,
+    "appearance: custom command preserves spaces and applies a local texture")
+capture(function() SBeGone.Slash("cover missing") end)
+capture(function() SBeGone.Slash("cover custom C:\\Pictures\\image.png") end)
+check(SBeGoneSettings.coverStyle == "custom" and SBeGoneSettings.customCover == customPath,
+    "appearance: rejected choices leave the previous selection untouched")
+capture(function() SBeGone.Slash("cover fox") end)
+capture(function() SBeGone.Slash("cover custom") end)
+check(P.Current().path == customPath, "appearance: custom command can reuse the saved local path")
+
+-- Re-enter through the real settings/restore path, including late saves.
+SBeGone.ready = false
+SBeGone.OnEnterWorld()
+check(P.Current().id == "custom" and C.pool[1].art.texture[1] == customPath,
+    "appearance: saved custom choice survives settings migration and character restore")
+C.ClearAll()
+local trackedStyleSlot = C.AllocateUnpositioned("track", "track")
+local trackedStylePlate = makePlate(100, 1)
+C.PlaceTracked(trackedStyleSlot, trackedStylePlate, 40)
+capture(function() SBeGone.Slash("cover blue") end)
+check(C.pool[trackedStyleSlot].frame.parent == trackedStylePlate
+    and C.pool[trackedStyleSlot].anchored and C.KindOf(trackedStyleSlot) == "track"
+    and C.pool[trackedStyleSlot].frame.mouse == false,
+    "appearance: live style changes preserve native tracking attachment and click-through")
+local originalBaseTexture = C.pool[trackedStyleSlot].base.SetTexture
+C.pool[trackedStyleSlot].base.SetTexture = function() error("paint restricted", 0) end
+local styleCallOK = pcall(C.ApplyStyle)
+check(styleCallOK and C.textureFailed,
+    "appearance: a rejected paint on an attached cover is reported without bypassing restrictions")
+C.pool[trackedStyleSlot].base.SetTexture = originalBaseTexture
+capture(function() SBeGone.Slash("cover custom") end)
+
+__unloadableTexture = customPath
+C.ApplyStyle()
+check(C.textureFailed and C.pool[appearanceSlot].art.texture[1] == C.ART_PATH,
+    "appearance: an explicit file-load failure falls back to the shipped fox")
+__unloadableTexture, __throwTexture = nil, customPath
+C.ApplyStyle()
+check(C.textureFailed and C.pool[appearanceSlot].art.texture[1] == C.ART_PATH,
+    "appearance: a rejected texture call cannot interrupt covers")
+__throwTexture = nil
+C.Restore(SBeGone.char)
+check(C.pool[1].art.texture[1] == customPath,
+    "appearance: restoring an initialized pool repaints the saved choice")
+
+capture(function() SBeGone.Slash("disable") end)
+capture(function() SBeGone.Slash("cover blue") end)
+flushDisplay()
+check(not SBeGoneSettings.enabled and C.ShownCount() == 0,
+    "appearance: choosing art while disabled cannot enable or reveal covers")
+check(O.frame == nil, "config: no interactive window is created automatically")
+capture(function() SBeGone.Slash("config") end)
+flushDisplay()
+check(O.frame and O.frame:IsShown() and O.frame.mouse == true,
+    "config: the explicit command opens the cover picker")
+check(O.input.autoFocus == false and O.preview.texture[1] == P.Find("blue").path,
+    "config: preview matches the saved choice without grabbing keyboard focus")
+O.buttons.red.scripts.OnClick()
+check(SBeGoneSettings.coverStyle == "red" and O.preview.texture[1] == P.Find("red").path,
+    "config: native no-argument button scripts save and preview the selected preset")
+O.input:SetText("Interface/AddOns/MyCovers/flower.tga")
+O.input.scripts.OnEnterPressed()
+check(P.Current().id == "custom" and O.input.focusCleared and O.preview.texture[1] == P.Current().path,
+    "config: custom input applies on Enter and releases focus")
+O.input:SetText("https://example.org/flower.tga")
+O.buttons.custom.scripts.OnClick()
+check(P.Current().id == "custom" and O.status.value:find("Use a local") ~= nil,
+    "config: invalid custom input explains the expected local path")
+O.input.scripts.OnEscapePressed()
+check(not O.frame:IsShown() and C.ShownCount() == 0,
+    "config: Escape closes the editor while disabled covers remain hidden")
+
+local pickerFrame = O.frame
+O.frame = nil
+local ordinaryCreateFrame = CreateFrame
+CreateFrame = function()
+    local frame = ordinaryCreateFrame()
+    frame.CreateFontString = function() error("UI API unavailable", 0) end
+    return frame
+end
+local pickerFallback = capture(function() SBeGone.Slash("config") end)
+CreateFrame = ordinaryCreateFrame
+check(O.unavailable and #pickerFallback == 3 and pickerFallback[1]:find("/spider cover"),
+    "config: an unavailable UI leaves working command-based cover selection")
+O.frame, O.unavailable = pickerFrame, nil
+capture(function() SBeGone.Slash("cover sage") end)
+check(P.Current().id == "sage" and C.ShownCount() == 0,
+    "config: command selection still works after a window API failure")
+check(legacyReads == 0, "appearance: configuration never queries mouseover or the cursor")
 
 if fails > 0 then
 	error(fails .. " test(s) FAILED", 0)

@@ -16,7 +16,7 @@ Client facts (docs/PLAN.md §2, verified in-client 2026-10-13):
 ]]
 
 SBeGone = SBeGone or {}
-SBeGone.version = "0.2.8"
+SBeGone.version = "0.3.0"
 local A = SBeGone.Access
 
 SBeGone.hidden = nil  -- panic-hide seam (M4); true hides every cover
@@ -44,6 +44,8 @@ local DEFAULTS = {
 	-- instead of a bare list (SBG13). Schema 3 retires cursor detection.
 	version = 3,
 	enabled = true,
+	coverStyle = "fox",
+	customCover = "",
 	color = { 0.55, 0.12, 0.12 },
 	opacity = 0.85,
 	coverSize = 96,
@@ -103,6 +105,7 @@ local function EnsureSettings()
 	-- if it previously selected the cursor mode. Preserve enabled=false.
 	s.autoTrack = nil
 	s.stickyCovers = nil
+	SBeGone.Appearance.Normalize(s)
 	for char in pairs(s.covers) do SBeGone.Cover.SavedList(s, char) end
 	s.version = DEFAULTS.version
 	SBeGone.debug = (s.debug == true)
@@ -129,6 +132,10 @@ function SBeGone.Slash(msg)
 	local first = string.match(msg or "", "^%s*(%S+)") or ""
 	if first == "" then
 		SBeGone.Selftest()
+	elseif first == "config" or first == "options" then
+		SBeGone.Config.Open()
+	elseif first == "cover" then
+		SBeGone.Appearance.Command((msg or ""):match("^%s*%S+%s*(.-)%s*$"))
 	elseif first == "on" or first == "enable" then
 		SBeGone.DeathWarning.Clear()
 		SBeGoneSettings.enabled = true
@@ -319,6 +326,7 @@ function SBeGone.Slash(msg)
 		-- No '|' chars in chat text: the WoW chat filter eats chat-control
 		-- sequences like |t / |h (SBG11) — use ' / ' separators.
 		print("SBG| /spider [enable / disable / toggle / clear / release / arrange N / parks N / grow N / drop N / near N / size N / name X / names / forget X / debug N / help]")
+		print("SBG| /spider config - cover picker / /spider cover <fox / red / blue / sage / charcoal / custom PATH>")
 	else
 		print(("SBG| unknown subcommand '%s' - /spider help for usage"):format(first))
 	end
@@ -360,9 +368,9 @@ function SBeGone.Selftest()
 	end
 	local warning = SBeGone.DeathWarning
 	local popupState = warning.popupUnavailable and "unavailable" or (warning.expires and "active" or "idle")
-	print(("SBG| enabled=%s | char=%s | driver=%s | corpsePopup=%s"):format(
+	print(("SBG| enabled=%s | char=%s | driver=%s | corpsePopup=%s | cover=%s"):format(
 		tostring(s.enabled), tostring(SBeGone.char),
-		tostring(SBeGone.driverOn), popupState))
+		tostring(SBeGone.driverOn), popupState, SBeGone.Appearance.Current().id))
 	local tracked = 0
 	if type(SBeGone.track) == "table" then
 		for _, slot in pairs(SBeGone.track) do

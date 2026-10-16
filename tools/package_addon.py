@@ -23,7 +23,10 @@ def main():
     output = root.parent / f"SpidersBeGone-{version}-fixed.zip"
     dependencies = [line.strip() for line in toc_text.splitlines()
                     if line.strip() and not line.startswith("#")]
-    sources = [toc_path, addon / "icon.tga", addon / "cover.tga"]
+    sources = [toc_path, addon / "icon.tga"]
+    # Only shipped presets belong in a release; never collect private custom art.
+    sources.extend(addon / name for name in (
+        "cover.tga", "cover-red.tga", "cover-blue.tga", "cover-sage.tga", "cover-charcoal.tga"))
     sources.extend(addon / name for name in dependencies)
     for source in sources:
         if not source.resolve().is_relative_to(addon.resolve()) or not source.is_file():
@@ -31,11 +34,14 @@ def main():
 
     with ZipFile(output, "w", compression=ZIP_DEFLATED) as archive:
         for source in sorted(set(sources)):
-            archive.write(source, "SpidersBeGone/" + source.name)
+            archive.write(source, "SpidersBeGone/" + source.relative_to(addon).as_posix())
         archive.write(root / "README.md", "SpidersBeGone/README.md")
         archive.write(root / "LICENSE", "SpidersBeGone/LICENSE.txt")
         for source in sorted((root / "docs").rglob("*.md")):
             archive.write(source, "SpidersBeGone/" + source.relative_to(root).as_posix())
+        for name in ("config_preview.png", "cover_choices.png"):
+            source = root / "docs" / "art" / name
+            archive.write(source, "SpidersBeGone/docs/art/" + name)
 
     review = root / "dist" / f"install-check-{version}"
     review.mkdir(parents=True, exist_ok=True)

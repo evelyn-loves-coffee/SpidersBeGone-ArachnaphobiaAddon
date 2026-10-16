@@ -8,6 +8,7 @@ SBeGone.Cover = C
 
 C.MAX = 24
 C.ART_PATH = "Interface\\AddOns\\SpidersBeGone\\cover.tga"
+C.BACKDROP = { 14 / 255, 19 / 255, 36 / 255 }
 
 C.pool = {}  -- [1..MAX] = { frame, base, art, x, y, w, h, kind }
 C.queue = {} -- allocated slot indices, in allocation order (FIFO)
@@ -32,11 +33,10 @@ local function makeTexture(frame)
 	end
 	return nil
 end
+C.CreateTexture = makeTexture
 
--- A cover frame: the shield disc (draggable), the TGA art on top, and a
--- solid fallback disc under it (same tint, fully inside the TGA's opaque
--- core — only visible if cover.tga is missing). Both textures get the same
--- working layer; base is created first so art draws over it.
+-- Full-color art over an opaque fallback covering the entire frame. Both
+-- textures use the proven layer; base is created first so art draws over it.
 local function makeFrame()
 	local f = CreateFrame("Frame")
 	f:SetParent(UIParent)
@@ -48,6 +48,7 @@ local function makeFrame()
 	f:SetMovable(true)
 	local base = makeTexture(f)
 	local art = makeTexture(f)
+	if base then base:SetAllPoints() end
 	if art then art:SetAllPoints() end
 	f:Hide()
 	return f, base, art
@@ -124,26 +125,31 @@ local function setTint(tex, r, g, b, a)
 	end
 end
 
--- Tint every cover from settings (red-ish patch, per owner preference).
+-- Some client builds return no value on success; only false or an error is
+-- a detectable failure. A syntactically valid missing file may still show a
+-- placeholder, so custom choices must be checked in the preview in game.
+function C.PaintArt(tex, path)
+	local ok, result = pcall(tex.SetTexture, tex, path)
+	local loaded = ok and result ~= false
+	if not loaded then pcall(tex.SetTexture, tex, C.ART_PATH) end
+	setTint(tex, 1, 1, 1, 1)
+	return loaded
+end
+
+-- Preserve the supplied artwork's colors. Old color/opacity settings must
+-- not tint the fox or reveal a spider through the cover. The imported TGA
+-- is also opaque, so coverage does not depend on the fallback texture.
 function C.ApplyStyle()
-	local s = SBeGoneSettings or {}
-	local col = { 0.55, 0.12, 0.12 }
-	if type(s.color) == "table" and #s.color == 3 then
-		col = s.color
-	end
-	local a = (type(s.opacity) == "number") and s.opacity or 0.85
+	local path = SBeGone.Appearance.Current().path
+	C.textureFailed = false
 	for i = 1, C.MAX do
 		local slot = C.pool[i]
 		if slot.base then
-			-- base: small solid disc, fully hidden under the TGA's opaque
-			-- core; becomes the visible fallback if cover.tga is ever
-			-- missing. SetTexture(r,g,b,a) numeric form = the modern
-			-- signature used by Spoken on this client.
-			slot.base:SetTexture(col[1], col[2], col[3], a)
+			local ok, result = pcall(slot.base.SetTexture, slot.base, C.BACKDROP[1], C.BACKDROP[2], C.BACKDROP[3], 1)
+			if not ok or result == false then C.textureFailed = true end
 		end
 		if slot.art then
-			slot.art:SetTexture(C.ART_PATH)
-			setTint(slot.art, col[1], col[2], col[3], a)
+			if not C.PaintArt(slot.art, path) then C.textureFailed = true end
 		end
 	end
 end
@@ -178,7 +184,7 @@ end
 function C.Resize(i, w, h)
 	local slot = C.pool[i]
 	-- Epsilon: auto-track re-sizes every tick from the plate's apparent width;
-	-- skip the work (and the base-texture re-anchoring) when it barely moved.
+	-- skip the work when it barely moved.
 	if type(w) == "number" and type(h) == "number"
 		and type(slot.w) == "number" and type(slot.h) == "number"
 		and math.abs(slot.w - w) < 1 and math.abs(slot.h - h) < 1 then
@@ -186,11 +192,6 @@ function C.Resize(i, w, h)
 	end
 	slot.w, slot.h = w, h
 	setSize(slot.frame, w, h)
-	if slot.base then
-		local inset = math.floor(w * 0.35)
-		slot.base:SetPoint("TOPLEFT", slot.frame, "TOPLEFT", inset, inset)
-		slot.base:SetPoint("BOTTOMRIGHT", slot.frame, "BOTTOMRIGHT", -inset, -inset)
-	end
 end
 
 -- Let go of a plate. Anchoring is the whole point of tracking, but the client
@@ -552,6 +553,7 @@ end
 -- shields. Persists the result.
 function C.Restore(char)
 	C.Init()
+	C.ApplyStyle() -- settings may have arrived after the pool was initialized
 	SBeGone.char = char
 	C.ClearAll()
 	local s = SBeGoneSettings or {}

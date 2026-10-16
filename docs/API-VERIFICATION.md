@@ -94,9 +94,9 @@ registration must be pcall-guarded).
 - **Our code's handling (Cover.lua):** `makeTexture` pcall-probes
   `CreateTexture(nil, layer)` with layers in order `ARTWORK, ART,
   BACKGROUND, MEDIUM, LOW, HIGH, HIGHLIGHT`, then a no-arg call. Both
-  cover textures share the first working layer; the fallback disc is
-  created first, tinted identically, and sits inside the TGA's opaque
-  core, so draw order between the two is visually irrelevant.
+  cover textures share the first working layer. Since v0.3.0 the fallback
+  fills the entire frame and is created first; the opaque full-color fox
+  texture is drawn over it with neutral white tint. Both remain fully opaque.
 
 ## Frames (SBG9, 2026-10-14 — in-game error + Spoken source)
 
