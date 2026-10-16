@@ -1,5 +1,9 @@
 # v0.2.5 native nameplate overlays
 
+Historical implementation notes. Native attachment/restriction handling still
+applies in v0.2.6; its tracking-only controls and settings migration supersede
+the mode selection below. See [TRACKING-ONLY.md](TRACKING-ONLY.md).
+
 This release continues the nameplate-attached model cover in v0.2.4 and adds
 the restriction handling identified in the source review. The implementation
 is original, with NoSpider acknowledged as inspiration in the README.

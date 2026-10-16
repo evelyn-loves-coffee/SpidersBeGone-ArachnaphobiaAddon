@@ -1,27 +1,22 @@
 --[[ Spiders Be Gone — arachnophobia addon for World of Warcraft Forever.
 
-M3 (UI-anchored covers, docs/PLAN.md §3.0):
-  * Sticky hover shield — hover a spider and a cover disc appears at the
-    cursor; when the mouse leaves, the cover STICKS (settings.stickyCovers,
-    default on). Sweeping the mouse across spiders leaves one stuck cover
-    per spider, so every spider you point at stays covered.
-  * Parkable shields — on a character's first run, settings.parkCount
-    (default 8) pre-parked, draggable cover discs spawn near the top of the
-    screen. Covers are SetMovable frames; positions persist per character in
-    SBeGoneSettings.covers[<char>] (survive /reload and logout).
-  * Slash: /spider [on|off|toggle|clear|help] (bare = selftest).
+Tracking is the only automatic detection mode. Visible accessible spider
+nameplates receive click-through covers without targeting or pointer input.
+Manual parked shields remain optional; only their positions are persisted.
+  * /spider enable: enable tracking (the default) and retry paused coverage.
+  * /spider disable: hide every cover and stop tracking.
+  * Bare /spider prints diagnostics.
 
 Client facts (docs/PLAN.md §2, verified in-client 2026-10-13):
   * WoW Forever 1.60.1 / build 70374 / interface 16001, Lua 5.1
   * RegisterEvent ERRORS on unknown events — only SBG6-confirmed events
   * Slash = two-part registration (SLASH_SPIDERn + SlashCmdList["SPIDER"])
   * UnitCanAttack is TWO-ARG on this client: UnitCanAttack(unit, target)
-  * No UPDATE / MOUSEOVER events — a ~10 Hz C_Timer driver polls "mouseover"
-  * GetCursorPosition / GetEffectiveScreenInfo exist (SBG4/SBG5)
+  * A ~10 Hz C_Timer driver scans nameplates; optional plate events refresh it.
 ]]
 
 SBeGone = SBeGone or {}
-SBeGone.version = "0.2.5"
+SBeGone.version = "0.2.6"
 local A = SBeGone.Access
 
 SBeGone.hidden = nil  -- panic-hide seam (M4); true hides every cover
@@ -36,11 +31,6 @@ SBeGone.debug = false
 -- are checked before an entry is adopted (see SBeGone.TrackTick).
 SBeGone.track = {}
 SBeGone.trackSlots = {}
--- One sticky cover per hovered creature. Owner report 2026-10-15: "mousing
--- over different units kept creating new covers but didn't clean up old
--- covers, even when mousing over the same unit" — the sticky branch dropped the
--- hover identity, so every re-hover allocated a fresh cover. key -> slot index.
-SBeGone.hoverByKey = {}
 
 -- Was SBeGoneSettings already populated when our scripts started running?
 -- If it was not, this client may apply SavedVariables after addon Lua, and a
@@ -51,14 +41,13 @@ SBeGone.loadSnapshot = { settingsPresent = (SBeGoneSettings ~= nil) }
 -- ---------------------------------------------------------------- settings
 local DEFAULTS = {
 	-- v2 schema: covers[char] is a { init = true, list = { ... } } record
-	-- instead of a bare list (SBG13). Migration is lazy, in Cover.SavedList.
-	version = 2,
+	-- instead of a bare list (SBG13). Schema 3 retires cursor detection.
+	version = 3,
 	enabled = true,
-	stickyCovers = true,
 	color = { 0.55, 0.12, 0.12 },
 	opacity = 0.85,
 	coverSize = 96,
-	parkCount = 8,
+	parkCount = 0,
 	-- ADDITIONAL name fragments on top of the curated database (SpiderDB.lua).
 	-- Empty by default: the DB already carries the owner's fragments.
 	namePatterns = {},
@@ -67,10 +56,7 @@ local DEFAULTS = {
 	minLevel = 1,
 	maxLevel = 99,
 	covers = {}, -- per character: { init = true, list = { {x,y,w,h,kind}, ... } }
-	-- M3.5 auto-track: anchor a cover to every visible spider's nameplate and
-	-- let the CLIENT move it (SBG15: we cannot measure a plate, but anchoring TO
-	-- one is allowed — proven in game 2026-10-15, "anchor=true").
-	autoTrack = true,
+	-- Native nameplate tracking is the only detection mode.
 	trackScale = 1.6,   -- cover local size = plate local width x this
 	drop = 0.9,         -- centre the cover this many cover-heights below the plate
 	trackRelease = 0.5, -- seconds a cover survives losing its plate (anti-flicker)
@@ -95,8 +81,11 @@ local function EnsureSettings()
 			s[k] = freshDefault(v)
 		end
 	end
-	-- Version migration seam: apply per-version transforms here as the
-	-- schema evolves (currently none — this is v1).
+	-- Retire the old mode selectors. An enabled installation now tracks even
+	-- if it previously selected the cursor mode. Preserve enabled=false.
+	s.autoTrack = nil
+	s.stickyCovers = nil
+	for char in pairs(s.covers) do SBeGone.Cover.SavedList(s, char) end
 	s.version = DEFAULTS.version
 	SBeGone.debug = (s.debug == true)
 end
@@ -111,8 +100,6 @@ function SBeGone.ClearCovers()
 		print("SBG| not in a character yet - nothing to clear")
 		return
 	end
-	SBeGone.hover = { slot = nil, key = nil }
-	SBeGone.hoverByKey = {}
 	SBeGone.track = {}
 	SBeGone.trackSlots = {}
 	SBeGone.Cover.ClearAll()
@@ -125,20 +112,29 @@ function SBeGone.Slash(msg)
 		SBeGone.Selftest()
 	elseif first == "on" or first == "enable" then
 		SBeGoneSettings.enabled = true
+		SBeGoneSettings.arrange = false
+		SBeGone.autoSuspended = false
+		SBeGone.trackFailures = 0
+		SBeGone.tickErrors = 0
 		if SBeGone.ready then
-			SBeGone.hover = { slot = nil, key = nil }
+			SBeGone.ClearTrack()
 			SBeGone.Cover.Restore(SBeGone.char)
+			SBeGone.Cover.ApplyInteractivity()
+			SBeGone.Refresh()
 		end
-		print("SBG| enabled - covers restored from saved positions")
+		print("SBG| enabled - tracking visible spider nameplates")
 	elseif first == "off" or first == "disable" then
 		SBeGoneSettings.enabled = false
+		SBeGoneSettings.arrange = false
 		if SBeGone.ready then
-			SBeGone.hover = { slot = nil, key = nil }
+			SBeGone.Cover.Save()
+			SBeGone.ClearTrack()
 			SBeGone.Cover.HideAll()
+			SBeGone.Cover.ApplyInteractivity()
 		end
-		print("SBG| disabled - all covers hidden (/spider on restores)")
+		print("SBG| disabled - all covers hidden (/spider enable restores tracking)")
 	elseif first == "toggle" then
-		SBeGone.Slash(SBeGoneSettings.enabled and "off" or "on")
+		SBeGone.Slash(SBeGoneSettings.enabled and "disable" or "enable")
 	elseif first == "clear" then
 		SBeGone.ClearCovers()
 		print("SBG| all covers cleared (saved for this character)")
@@ -163,24 +159,14 @@ function SBeGone.Slash(msg)
 			print(("SBG| parked shields = %d"):format(n))
 		end
 	elseif first == "auto" then
-		-- Auto-track is the primary mode (covers follow visible spiders); "off"
-		-- falls back to the cursor/sticky behaviour verified in M3.
-		local a = string.match(msg or "", "^%s*auto%s+(%S+)") or ""
-		if a == "on" or a == "off" then
-			SBeGoneSettings.autoTrack = (a == "on")
-			if a == "on" then
-				SBeGone.trackFailures = 0
-				SBeGone.tickErrors = 0
-				SBeGone.autoSuspended = false
-			end
-			if not SBeGoneSettings.autoTrack and SBeGone.ready then
-				SBeGone.ClearTrack()
-			end
-		end
-		print("SBG| auto-track " .. (SBeGoneSettings.autoTrack and "on" or "off"))
+		print("SBG| auto command retired - use /spider enable or /spider disable")
 	elseif first == "arrange" then
 		-- Covers are click-through by default (a disc must not eat the click
 		-- under it). Arrange mode hands the mouse back so they can be dragged.
+		if not SBeGoneSettings.enabled then
+			print("SBG| disabled - /spider enable before arranging manual shields")
+			return
+		end
 		local a = string.match(msg or "", "^%s*arrange%s+(%S+)") or ""
 		if a == "on" then
 			SBeGoneSettings.arrange = true
@@ -200,7 +186,7 @@ function SBeGone.Slash(msg)
 	elseif first == "grow" or first == "drop" or first == "size" then
 		-- grow = cover size relative to the plate; drop = how far below the
 		-- plate the cover is centred (models hang below their nameplate);
-		-- size = fixed size of parked and sticky covers.
+		-- size = fixed size of manual parked covers.
 		local key = (first == "grow") and "trackScale" or (first == "drop") and "drop" or "coverSize"
 		local v = tonumber(string.match(msg or "", "^%s*%S+%s+(%S+)"))
 		if not v then
@@ -218,15 +204,13 @@ function SBeGone.Slash(msg)
 			print(("SBG| %s = %.2f"):format(key, v))
 		end
 	elseif first == "release" then
-		-- Tracked covers are auto-released when their spider walks away; sticky
-		-- covers never are (that is what makes them sticky). This is the
-		-- explicit clean-up the owner asked for on 2026-10-15.
+		-- Tracked covers return on the next scan; manual shields are kept.
 		if not SBeGone.ready then
 			print("SBG| not in a character yet - nothing to release")
 		else
-			SBeGone.ResetTrack()
+			SBeGone.ClearTrack()
 			SBeGone.Cover.Save()
-			print("SBG| released tracked and sticky covers (parked shields kept)")
+			print("SBG| released tracked covers (parked shields kept)")
 		end
 	elseif first == "debug" then
 		local a = string.match(msg or "", "^%s*debug%s+(%S+)") or ""
@@ -297,7 +281,7 @@ function SBeGone.Slash(msg)
 	elseif first == "help" then
 		-- No '|' chars in chat text: the WoW chat filter eats chat-control
 		-- sequences like |t / |h (SBG11) — use ' / ' separators.
-		print("SBG| /spider [on / off / toggle / clear / release / auto N / arrange N / parks N / grow N / drop N / size N / name X / names / forget X / debug N / help]")
+		print("SBG| /spider [enable / disable / toggle / clear / release / arrange N / parks N / grow N / drop N / size N / name X / names / forget X / debug N / help]")
 	else
 		print(("SBG| unknown subcommand '%s' - /spider help for usage"):format(first))
 	end
@@ -337,17 +321,17 @@ function SBeGone.Selftest()
 			for _ in ipairs(list) do saved = saved + 1 end
 		end
 	end
-	print(("SBG| enabled=%s | char=%s | driver=%s | sticky=%s"):format(
+	print(("SBG| enabled=%s | char=%s | driver=%s"):format(
 		tostring(s.enabled), tostring(SBeGone.char),
-		tostring(SBeGone.driverOn), tostring(s.stickyCovers)))
+		tostring(SBeGone.driverOn)))
 	local tracked = 0
 	if type(SBeGone.track) == "table" then
 		for _, slot in pairs(SBeGone.track) do
 			if SBeGone.Cover.IsAllocated(slot) then tracked = tracked + 1 end
 		end
 	end
-	print(("SBG| auto=%s tracked=%d arrange=%s grow=%s drop=%s | covers shown=%d/%d | saved=%d | size=%s | limited=%s paused=%s"):format(
-		tostring(s.autoTrack), tracked, tostring(s.arrange), tostring(s.trackScale),
+	print(("SBG| mode=tracking tracked=%d arrange=%s grow=%s drop=%s | covers shown=%d/%d | saved=%d | size=%s | limited=%s paused=%s"):format(
+		tracked, tostring(s.arrange), tostring(s.trackScale),
 		tostring(s.drop), SBeGone.Cover.ShownCount(), SBeGone.Cover.MAX, saved,
 		tostring(s.coverSize), tostring(SBeGone.coverageLimited == true), tostring(SBeGone.autoSuspended == true)))
 end
@@ -371,6 +355,7 @@ function SBeGone.Tick()
 end
 
 function SBeGone.Refresh()
+	if not SBeGone.ready or not SBeGoneSettings.enabled or SBeGone.hidden then return end
 	local ok, err = pcall(SBeGone.Update)
 	if not ok then
 		SBeGone.coverageLimited = true
@@ -381,7 +366,7 @@ function SBeGone.Refresh()
 			-- Stop rather than trying another automatic detection channel.
 			SBeGone.autoSuspended = true
 			SBeGone.ClearTrack()
-			print("SBG| automatic covers paused after errors; coverage limited (/spider auto on to retry)")
+			print("SBG| automatic covers paused after errors; coverage limited (/spider enable to retry)")
 		end
 	else
 		SBeGone.tickErrors = 0
@@ -398,9 +383,10 @@ function SBeGone.StartDriver()
 	C_Timer.After(tickInterval, SBeGone.Tick)
 end
 
--- Tick logic: pick up drags, then run the sticky hover state machine.
+-- Scan accessible nameplates, then pick up optional manual-shield drags.
 function SBeGone.Update()
 	local s = SBeGoneSettings
+	if not SBeGone.ready or not s.enabled or SBeGone.hidden then return end
 	SBeGone.coverageLimited = SBeGone.autoSuspended == true
 	SBeGone.Cover.RetryReleases()
 	if SBeGone.autoSuspended then return end
@@ -410,75 +396,9 @@ function SBeGone.Update()
 		SBeGone.Cover.SyncDrags()
 		return
 	end
-	-- Auto-track (the owner's goal: covers appear as you walk up on spiders,
-	-- no targeting, no mouseover) is the primary mode; the cursor/sticky path
-	-- remains available only when explicitly selected with /spider auto off.
-	if s.autoTrack then
-		SBeGone.TrackTick()
-	else
-		SBeGone.HoverTick()
-	end
+	SBeGone.TrackTick()
 	SBeGone.Cover.SyncDrags()
 end
-
--- Fallback mode (also what M3 shipped): a cover follows the cursor while the
--- mouse is on a spider, then sticks.
-function SBeGone.HoverTick()
-	local s = SBeGoneSettings
-	SBeGone.Cover.SyncDrags()
-
-	local name = A.Query(UnitName, "mouseover")
-	local hovering = name ~= nil and SBeGone.Units.IsSpider("mouseover")
-	local h = SBeGone.hover
-	local sticky = s.stickyCovers ~= false
-
-	if hovering then
-		local cx, cy = A.Query(GetCursorPosition)
-		if type(cx) ~= "number" or type(cy) ~= "number" then return end
-		local id = A.Query(UnitCreatureID, "mouseover")
-		local key = name .. "|" .. tostring(id)
-		if h.slot == nil or h.key ~= key then
-			-- Newly on a (different) spider: settle the previous cover —
-			-- release it (sticky off) or leave it stuck (sticky on) — then
-			-- start a new cover at the cursor for this spider.
-			if h.slot ~= nil and not sticky then
-				SBeGone.Cover.Release(h.slot)
-			end
-			-- One cover per creature: re-hovering a spider re-uses the cover it
-			-- already owns instead of allocating a duplicate (owner report:
-			-- "kept creating new covers, even when mousing over the same unit").
-			-- Same identity rule as tracking (SBG16): a bare index is not an
-			-- identity. KindOf must say "hover" - a sticky entry whose cover was
-			-- sacrificed to the pool must not adopt somebody else's disc.
-			local reuse = sticky and SBeGone.hoverByKey[key] or nil
-			if reuse ~= nil and SBeGone.Cover.KindOf(reuse) ~= "hover" then
-				reuse = nil
-			end
-			if reuse ~= nil then
-				h.slot = reuse
-				SBeGone.Cover.Place(reuse, cx, cy)
-			else
-				h.slot = SBeGone.Cover.Allocate("hover", cx, cy, "hover")
-			end
-			SBeGone.hoverByKey[key] = h.slot
-			h.key = key
-		else
-			SBeGone.Cover.Place(h.slot, cx, cy)
-		end
-	else
-		if h.slot ~= nil then
-			if not sticky then
-				SBeGone.Cover.Release(h.slot)
-			end
-			-- sticky: the cover simply stays where it is, still mapped to its
-			-- creature so the next hover re-uses it
-			h.slot = nil
-			h.key = nil
-			SBeGone.Cover.Save()
-		end
-	end
-end
-
 
 -- ------------------------------------------------------------ auto-track (M3.5)
 -- The behaviour the owner asked for (2026-10-15): "as I walk toward spiders
@@ -591,7 +511,7 @@ end
 
 -- Cover calls this when it sacrifices a slot to make room: an entry that points
 -- at a slot we no longer own has to go, otherwise the next tick adopts whatever
--- cover now lives at that index (a parked shield, a sticky cover).
+-- cover now lives at that index (for example, a parked shield).
 if SBeGone.Cover then
 	SBeGone.Cover.onEvict = function(slot)
 		local token = SBeGone.trackSlots and SBeGone.trackSlots[slot]
@@ -602,7 +522,7 @@ if SBeGone.Cover then
 	end
 end
 
--- Release every tracked cover (mode switch, arrange mode, /spider clear).
+-- Release every tracked cover (disable, arrange mode, /spider release).
 function SBeGone.ClearTrack()
 	local C = SBeGone.Cover
 	for token, slot in pairs(SBeGone.track) do
@@ -612,20 +532,8 @@ function SBeGone.ClearTrack()
 	SBeGone.trackSlots = {}
 end
 
--- Tracked covers + the sticky ones (sticky covers are never auto-released, so
--- they need this explicit pass). Parked shields are kept.
-function SBeGone.ResetTrack()
-	SBeGone.ClearTrack()
-	local C = SBeGone.Cover
-	for key, slot in pairs(SBeGone.hoverByKey) do
-		if C.IsAllocated(slot) then C.Release(slot) end
-	end
-	SBeGone.hoverByKey = {}
-	SBeGone.hover = { slot = nil, key = nil }
-end
-
 function SBeGone.TrackTick()
-	if SBeGone.autoSuspended then return end
+	if SBeGone.autoSuspended or not SBeGoneSettings.enabled or SBeGone.hidden then return end
 	local C, U = SBeGone.Cover, SBeGone.Units
 	local s = SBeGoneSettings
 	local t = SBeGone.track
@@ -649,7 +557,7 @@ function SBeGone.TrackTick()
 				if plate then
 					live[token] = true
 					-- Adopt an entry only if its kind and reverse map still agree:
-					-- pool indices are recycled and may belong to a sticky cover.
+					-- pool indices are recycled and may belong to a parked shield.
 					if slot == nil or C.KindOf(slot) ~= "track"
 						or SBeGone.trackSlots[slot] ~= token then
 						-- Prefer sacrificing another track cover over parked shields.
@@ -672,7 +580,7 @@ function SBeGone.TrackTick()
 							SBeGone.trackFailures = (SBeGone.trackFailures or 0) + 1
 							if SBeGone.trackFailures == 20 then
 								SBeGone.autoSuspended = true
-								print("SBG| the client would not anchor covers - automatic covers paused; coverage limited (/spider auto on to retry)")
+								print("SBG| the client would not anchor covers - automatic covers paused; coverage limited (/spider enable to retry)")
 							end
 						end
 					end
@@ -722,14 +630,12 @@ function SBeGone.OnEnterWorld()
 	if not SBeGone.loadSnapshot.settingsPresent and not SBeGone.sawVariablesLoaded then
 		return false
 	end
+	EnsureSettings() -- also migrate SavedVariables applied after script load
 	local char = UnitName and UnitName("player")
 	if not char then return false end -- still at character select
 	SBeGone.char = char
 	SBeGone.ready = true
-	-- This session starts with no hover / tracking state: saved covers are
-	-- re-shown by Restore, tracked covers are rebuilt on the first tick.
-	SBeGone.hover = { slot = nil, key = nil }
-	SBeGone.hoverByKey = {}
+	-- Saved manual shields are restored; native covers are rebuilt by tracking.
 	SBeGone.track = {}
 	SBeGone.trackSlots = {}
 	SBeGone.trackFailures = 0
@@ -786,7 +692,7 @@ local function EnsureEventFrame()
 				if slot then SBeGone.Cover.Release(slot); dropTrack(unit) end
 			end
 		elseif ev == "NAME_PLATE_UNIT_ADDED" and SBeGone.ready
-			and SBeGoneSettings.enabled and SBeGoneSettings.autoTrack and not SBeGone.hidden then
+			and SBeGoneSettings.enabled and not SBeGone.hidden then
 			SBeGone.Refresh()
 		end
 	end)

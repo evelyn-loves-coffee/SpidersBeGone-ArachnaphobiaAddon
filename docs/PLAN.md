@@ -1,6 +1,9 @@
 # Spiders Be Gone — Arachnaphobia Addon
 
-**Plan of record for the addon. Read this before writing code.**
+**Historical design and probe log.** Current behavior is documented in
+[TRACKING-ONLY.md](TRACKING-ONLY.md) and [HANDOFF.md](HANDOFF.md). Their v0.2.6
+tracking-only controls supersede the cursor-mode design and fallback
+instructions below. Retain this document as the earlier API investigation.
 
 - Repo: `SpidersBeGone-ArachnaphobiaAddon`
 - Target client: **World of Warcraft Forever** — official, original, classic-based

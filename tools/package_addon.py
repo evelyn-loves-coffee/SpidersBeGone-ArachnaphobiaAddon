@@ -69,7 +69,7 @@ def main():
         os.chdir(original_cwd)
         (root / "dist" / f"validation-{version}.txt").write_text(
             "\n".join(messages) + "\n", encoding="utf-8")
-    assert messages[-1] == "ALL M3 TESTS PASS"
+    assert messages[-1] == "ALL TESTS PASS"
     passed = sum(message.startswith("PASS:") for message in messages)
     print(f"Packaged-addon Lua 5.1 regression suite: {passed} checks passed")
     print("Archive integrity, dependencies, version, license and NoSpider credit: passed")

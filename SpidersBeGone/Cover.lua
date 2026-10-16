@@ -1,7 +1,6 @@
 -- Spiders Be Gone — Cover.lua: the 24-slot cover frame pool (M3).
--- Sticky hover covers and parkable shields share this pool (FIFO: when full,
--- a new cover evicts the oldest). Covers are draggable (SetMovable) and their
--- positions persist per character in SBeGoneSettings.covers[<char>].
+-- Native tracked covers and optional manual shields share this pool.
+-- Only explicit manual shields persist per character.
 SBeGone = SBeGone or {}
 
 local C = {}
@@ -55,10 +54,10 @@ local function makeFrame()
 end
 
 -- Arrange mode: covers accept the mouse so they can be dragged and lined up.
--- Everything else (auto-track and sticky covers) is click-through.
+-- Everything else is click-through; disabled covers never take input.
 function C.IsInteractive()
 	local s = SBeGoneSettings
-	return (type(s) == "table" and s.arrange) and true or false
+	return (type(s) == "table" and s.enabled and s.arrange and not SBeGone.hidden) and true or false
 end
 
 function C.ApplyInteractivity()
@@ -150,8 +149,7 @@ function C.ApplyStyle()
 end
 
 -- Place a cover centered at (x, y) in UIParent/BOTTOMLEFT UI coordinates —
--- the same space GetCursorPosition and GetPoint use.
--- Epsilon: skip the SetPoint when the cursor moved < 1 UI pixel (PLAN §3.3).
+-- Epsilon: skip SetPoint when the position moved less than 1 UI pixel.
 function C.Place(i, x, y)
 	local slot = C.pool[i]
 	if slot.anchored then return end -- the client owns this frame's position
@@ -162,7 +160,7 @@ function C.Place(i, x, y)
 	end
 	slot.x, slot.y = x, y
 	slot.frame:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x, y)
-	if not slot.frame:IsShown() then
+	if SBeGoneSettings.enabled and not SBeGone.hidden and not slot.frame:IsShown() then
 		slot.frame:Show()
 	end
 end
@@ -203,7 +201,7 @@ end
 function C.Unanchor(i)
 	local slot = C.pool[i]
 	if not slot then return false end
-	-- Pool slots are also used for parked/sticky covers. Detach OUR frame
+	-- Pool slots are also used for manual covers. Detach OUR frame
 	-- from the plate before it can be reused or measured as a screen cover.
 	local parentOK = pcall(slot.frame.SetParent, slot.frame, UIParent)
 	if not parentOK then SBeGone.coverageLimited = true; return false end
@@ -236,6 +234,7 @@ end
 -- Size and dropY are plate-local units: perspective is inherited once, by
 -- both the disc and its offset, between Lua polling ticks. Never measure it.
 function C.PlaceTracked(i, plate, dropY)
+	if not SBeGoneSettings.enabled or SBeGone.hidden then return false end
 	local slot = C.pool[i]
 	if not slot or not SBeGone.Access.FrameUsable(plate) or not slot.frame.SetPoint then return false end
 	local mouseOK = pcall(slot.frame.EnableMouse, slot.frame, false)
@@ -346,10 +345,9 @@ function C.IsAllocated(i)
 	return slot ~= nil and slot.allocated == true
 end
 
--- Who owns a slot right now ("park" / "hover" / "track"). Callers that key a
+-- Who owns a slot right now ("park" / "track"). Callers that key a
 -- map on a slot INDEX must check this before adopting it: indices are recycled,
--- so a stale index can point at somebody else's cover (found in the M3.5 suite:
--- a tracking entry adopted a sticky hover cover and anchored it to a plate).
+-- so a stale index can point at somebody else's manual shield.
 function C.KindOf(i)
 	local slot = (type(i) == "number") and C.pool[i] or nil
 	return slot and slot.allocated and slot.kind or nil
@@ -391,7 +389,7 @@ end
 function C.HideAll()
 	if not C.inited then return end
 	for i = 1, C.MAX do
-		C.pool[i].frame:Hide()
+		pcall(C.pool[i].frame.Hide, C.pool[i].frame)
 	end
 end
 
@@ -488,7 +486,7 @@ function C.Save()
 		-- Persist only what WE positioned. Auto-track (anchored) covers are
 		-- excluded on purpose: their position belongs to a spider that will not
 		-- exist next session, and an anchored frame cannot be measured anyway.
-		if slot.allocated and not slot.anchored
+		if slot.allocated and slot.kind == "park" and not slot.anchored
 			and type(slot.x) == "number" and type(slot.y) == "number" then
 			list[#list + 1] = { x = slot.x, y = slot.y, w = slot.w, h = slot.h, kind = slot.kind }
 		end
@@ -517,13 +515,16 @@ function C.SavedList(s, char)
 	if type(rec) ~= "table" then
 		return {}, true
 	end
-	if type(rec.list) == "table" then
-		return rec.list, (rec.init ~= true)
-	end
+	local firstRun = type(rec.list) == "table" and rec.init ~= true
+	local list = type(rec.list) == "table" and rec.list or rec
 	local out = {}
-	for _, e in ipairs(rec) do out[#out + 1] = e end
-	s.covers[char] = { init = true, list = out }
-	return out, false
+	for _, e in ipairs(list) do
+		-- Retired cursor covers (including legacy records with no kind) must
+		-- never reappear. Keep only explicitly parked manual shields.
+		if type(e) == "table" and e.kind == "park" then out[#out + 1] = e end
+	end
+	s.covers[char] = { init = not firstRun, list = out }
+	return out, firstRun
 end
 
 -- Spawn n default pre-parked shields (a row near the top-left).
@@ -558,13 +559,13 @@ function C.Restore(char)
 	local complete = true
 	for _, e in ipairs(saved) do
 		if type(e) == "table" and type(e.x) == "number" and type(e.y) == "number" then
-			local i = C.Allocate(e.kind or "hover", e.x, e.y)
+			local i = C.Allocate("park", e.x, e.y)
 			local w = (type(e.w) == "number") and e.w or C.Size()
 			local h = (type(e.h) == "number") and e.h or w
 			if i then C.Resize(i, w, h) else complete = false end
 		end
 	end
-	local parks = (type(s.parkCount) == "number") and s.parkCount or 8
+	local parks = (type(s.parkCount) == "number") and s.parkCount or 0
 	if firstRun then
 		if C.Park(parks) < parks then complete = false end
 	end
