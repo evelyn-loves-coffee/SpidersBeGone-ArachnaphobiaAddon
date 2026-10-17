@@ -604,29 +604,34 @@ plateA.GetWidth = getWidth
 UIParent.scale, plateA.effScale = 1, 0.5
 plateA:SetWidth(100)
 
--- Near-field boost, v0.4.1 automatic (2026-10-16 owner screenshot: the
--- closest visible spider showed its legs). The client holds nameplate
--- apparent size in a narrow band while the model keeps growing as the
--- camera approaches, so the calibrated cover under-covers close spiders.
--- True camera distance is unmeasurable on this client (every position API
--- absent - docs/API-VERIFICATION.md); the boost is a continuous ramp on
--- the plate's apparent width (width x scale, UI-scale px): 1.0 at/under
--- 30 UI, smoothstep to the nearBoost ceiling at/above 80 UI - flat across
--- the measured close band (87-113 UI) so the cover cannot "breathe".
+-- Near-field boost, automatic (v0.4.1; v0.4.2 moved the low knee 30 -> 60
+-- after in-game review: the 30 knee kept mid-range covers too large and
+-- the owner wants the /as near 1 far-shrink behavior - docs/NEAR-RAMP.md).
+-- 2026-10-16 owner screenshot: the closest visible spider showed its legs.
+-- The client holds nameplate apparent size in a narrow band while the
+-- model keeps growing as the camera approaches, so the calibrated cover
+-- under-covers close spiders. True camera distance is unmeasurable on this
+-- client (every position API absent - docs/API-VERIFICATION.md); the boost
+-- is a continuous ramp on the plate's apparent width (width x scale,
+-- UI-scale px): 1.0 at/under 60 UI, smoothstep to the nearBoost ceiling
+-- at/above 80 UI - flat across the measured close band (87-113 UI) so the
+-- cover cannot "breathe".
 ArachnaphobiaShieldSettings.nearBoost = 2.5 -- plate apparent width is 100 x 0.5 = 50
 ArachnaphobiaShield.Tick()
--- ramp at apparent 50: x = (50-30)/(80-30) = 0.4, smoothstep = 0.352,
--- boost = 1 + 1.5 x 0.352 = 1.528
-check(math.abs(trackedFrame:GetWidth() - 100 * 1.528) < 0.001,
-	"near: mid-range apparent width gets a partial boost (ramp at 50 UI)")
+check(trackedFrame:GetWidth() == 100,
+	"near: apparent 50 is below the 60 knee - far/mid plates stay unboosted")
 local ptNear = ArachnaphobiaShield.Cover.pool[trA].frame.points[1]
-check(math.abs(ptNear.y * trackedFrame:GetEffectiveScale() + 152.8 * 0.5 * 0.5) < 0.001,
-	"near: the boosted cover keeps the drop ratio below the plate")
-plateA.effScale = 0.2 -- apparent 20 < 30: a far spider, ramp not started
+check(math.abs(ptNear.y * trackedFrame:GetEffectiveScale() + 100 * 0.5 * 0.5) < 0.001,
+	"near: the unboosted cover keeps the drop ratio below the plate")
+plateA.effScale = 0.2 -- apparent 20: a far spider, ramp not started
 ArachnaphobiaShield.Tick()
 check(trackedFrame:GetWidth() == 100,
 	"near: a far plate below the ramp keeps the calibrated size")
 plateA.effScale = 0.5
+plateA:SetWidth(140) -- apparent 70: mid-ramp, x = 0.5, boost = 1 + 1.5 x 0.5 = 1.75
+ArachnaphobiaShield.Tick()
+check(math.abs(trackedFrame:GetWidth() - 140 * 1.75) < 0.001,
+	"near: mid-ramp apparent width 70 gets the partial boost (ceiling respected)")
 ArachnaphobiaShieldSettings.nearBoost = 2.6
 plateA:SetWidth(160) -- apparent 80: exactly the high knee, full ceiling
 ArachnaphobiaShield.Tick()

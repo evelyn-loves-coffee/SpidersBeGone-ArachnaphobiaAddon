@@ -4,12 +4,16 @@ Addon for **World of Warcraft Forever** (classic 1.x-line client, v1.60.1) that
 covers spider models with a nameplate-attached UI element. UI-layer only: no model
 swaps, no game-file modification.
 
-**Status: v0.4.1 — automatic near-field boost (no setting); live
-validation belongs on the partner's test machine.** v0.4.1 retires the
-`/as near` level: the boost is now computed automatically every 10 Hz tick
-as a smooth ramp of the nameplate's apparent width (none at/under 30 UI px,
-full `x2.6` from 80 up - just below the measured close-range band, so the
-cover is constant at close range). v0.4.0 fixed the
+**Status: v0.4.2 — near ramp re-tuned to keep far/mid covers small; live
+validation belongs on the partner's test machine.** v0.4.2 moved the ramp's
+low knee from 30 to 60 UI px: after in-game review the 30 knee gave partial
+boosts to mid-range plates that old `/as near 1` never did, so far spiders
+lost the small plate-proportional cover (the "small shield far away" the
+owner wanted kept - docs/NEAR-RAMP.md). v0.4.1 retires the `/as near`
+level: the boost is computed automatically every 10 Hz tick as a smooth
+ramp of the nameplate's apparent width (none at/under 60 UI px, full `x2.6`
+from 80 up - just below the measured close-range band, so the cover is
+constant at close range). v0.4.0 fixed the
 blank `/as config` preview (the checker, backing and art now follow the
 in-game cover's one-frame layout and show cycle) and simplifies tuning:
 `/as grow` takes a percentage (`100` = default, allowed `80`–`120`), `/as
@@ -58,7 +62,7 @@ for the historical design and client-probe records.
 Extract the fixed ZIP and replace the `ArachnaphobiaShield/` folder in your client's
 `Interface/AddOns/` directory, then log in or `/reload`. The `.toc` must be at
 `Interface/AddOns/ArachnaphobiaShield/ArachnaphobiaShield.toc`, without an extra nested
-repository folder. `/as` should report **v0.4.1**.
+repository folder. `/as` should report **v0.4.2**.
 
 Choose your cover with **`/as config`**. The default is the supplied fox
 illustration on a navy-toned camouflage squircle card; alternatives are
@@ -88,18 +92,15 @@ approaches, so a plate-proportional cover under-covers close spiders (legs
 showing). True camera distance is unmeasurable on this client (every
 position API is absent), so the boost is not graded by distance: every
 10 Hz tick multiplies the tracked size by a smooth ramp of the plate's
-apparent width - none at/under 30 UI px, ramping up to the near-field
-boost (`x2.6`) at/above 80 UI px. The 80 knee sits just below the two
-measured close-range apparent widths (87–113 UI units, calibrated from
-2026-10-16 screenshots at 1.205 px/UI), so the boost is constant across
-the whole band the client clamps to. There is no setting to change it
-(`/as near` is retired); verify with `/as debug on` and the `AS| near:`
-line (apparent width and computed factor per plate).
-
-**Known issue (2026-10-17):** the 30→80 ramp keeps mid-range covers too
-large - far spiders no longer get the small plate-proportional shield that
-`/as near 1` gave. Fix designed (move the low knee to 60): see
-[docs/NEAR-RAMP.md](docs/NEAR-RAMP.md).
+apparent width - none at/under 60 UI px, ramping up to the near-field
+boost (`x2.6`) at/above 80 UI px. The 60 knee (v0.4.2) keeps far/mid
+plates unboosted so their covers stay plate-proportional and shrink with
+distance; the 80 knee sits just below the two measured close-range apparent
+widths (87–113 UI units, calibrated from 2026-10-16 screenshots at 1.205
+px/UI), so the boost is constant across the whole band the client clamps
+to. There is no setting to change it (`/as near` is retired); verify with
+`/as debug on` and the `AS| near:` line (apparent width and computed factor
+per plate).
 
 **Known limitation:** when the camera is very close, the client clamps the
 nameplate itself (edge/stacking), the cover follows the plate, and no

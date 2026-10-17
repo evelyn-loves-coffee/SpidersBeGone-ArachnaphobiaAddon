@@ -1,9 +1,25 @@
 # Open issue: the automatic near ramp keeps mid-range covers too large
 
-**Status: OPEN — fix designed, awaiting owner sign-off (recorded 2026-10-17,
-owner stepped away for the night).**
+**Status: CLOSED in v0.4.2 — option A implemented (low knee 30→60), 222/222
+offline tests green, committed and pushed; in-game re-test still pending on
+the partner's machine (recorded 2026-10-17, fixed the same evening).**
 
-## Where v0.4.1 stands
+## Resolution (v0.4.2)
+
+- `Core.lua`: `NEAR_RAMP_LO, NEAR_RAMP_HI = 60, 80`; comments and the
+  DEFAULTS rationale updated; version 0.4.2.
+- `tools/test_core.lua`: apparent 50 now asserts **unboosted** (below the
+  new 60 knee, drop ratio preserved); new apparent-70 test asserts the
+  mid-ramp partial boost with the ceiling respected (1.75 at ceiling 2.5);
+  high-knee (80 → full) and flat-band (90 → full) tests unchanged.
+- README (status + near-field section, known-issue note removed) and
+  HANDOFF (settings paragraph) updated to the 60→80 ramp.
+- Pending: owner walks far → close in game with `/as debug on` and confirms
+  far covers are small again and the close band is flat.
+
+---
+
+## Where v0.4.1 stood
 
 - v0.4.1 (commit `5747282`, pushed) retired the `/as near` level setting and
   computes the near-field boost automatically every 10 Hz tick:
