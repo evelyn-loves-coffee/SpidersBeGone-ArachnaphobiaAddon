@@ -82,6 +82,10 @@ function O.Refresh()
 	-- validator only accepts the full game-relative path, and a bare file
 	-- name is the failure mode the picker keeps seeing.
 	O.input:SetText(saved == "" and P.CUSTOM_ROOT or saved)
+	-- Caret at the end so the user literally only types the file name: a
+	-- fresh SetText leaves it at position 0, where typing would insert
+	-- BEFORE the prefilled prefix and break the path.
+	if O.input.SetCursorPosition then pcall(O.input.SetCursorPosition, O.input, -1) end
 end
 
 local function applyCustom()

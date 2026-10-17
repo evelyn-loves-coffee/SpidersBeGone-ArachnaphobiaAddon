@@ -111,8 +111,12 @@ local function makeFrame()
 	end
 	function f:SetMovable(_) movementCalls = movementCalls + 1; error("cover movement is forbidden", 0) end
 	f.StartMoving, f.StopMovingOrSizing, f.RegisterForDrag = f.SetMovable, f.SetMovable, f.SetMovable
-	function f:SetText(value) self.text = value end
+	function f:SetText(value)
+		self.text = value
+		self.cursor = 0 -- Client-faithful: a fresh SetText parks the caret at the start
+	end
 	function f:GetText() return self.text or "" end
+	function f:SetCursorPosition(index) self.cursor = index end
 	function f:SetFont(...) self.font = { ... } end
 	function f:SetAutoFocus(on) self.autoFocus = on end
 	function f:ClearFocus() self.focusCleared = true end
@@ -1335,8 +1339,9 @@ check(ArachnaphobiaShieldSettings.autoTrack == nil and ArachnaphobiaShieldSettin
 check(ArachnaphobiaShield.debug == false and ArachnaphobiaShield.autoSuspended == false
     and ArachnaphobiaShield.trackFailures == 0 and ArachnaphobiaShield.tickErrors == 0,
     "reset: runtime pause and debug state follow the restored defaults")
-check(O.input:GetText() == P.CUSTOM_ROOT and O.preview.texture[1] == P.PRESETS[1].path
-    and O.preview.tint[4] == 1, "reset: an open picker refreshes and prefills the custom prefix")
+check(O.input:GetText() == P.CUSTOM_ROOT and O.input.cursor == -1
+    and O.preview.texture[1] == P.PRESETS[1].path and O.preview.tint[4] == 1,
+    "reset: an open picker refreshes, prefills the prefix, and parks the caret at the end")
 O.Close()
 flushDisplay()
 local resetSlot = ArachnaphobiaShield.track.nameplate1
