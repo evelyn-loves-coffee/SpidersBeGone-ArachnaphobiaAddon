@@ -17,7 +17,7 @@ Client facts (docs/PLAN.md §2, verified in-client 2026-10-13):
 ]]
 
 ArachnaphobiaShield = ArachnaphobiaShield or {}
-ArachnaphobiaShield.version = "0.4.3"
+ArachnaphobiaShield.version = "0.4.4"
 local A = ArachnaphobiaShield.Access
 
 ArachnaphobiaShield.hidden = nil  -- panic-hide seam (M4); true hides every cover
@@ -90,8 +90,11 @@ local DEFAULTS = {
 	-- cover cannot "breathe". Far plates (<= ~74) stay unboosted and
 	-- plate-proportional, keeping the /as near 1 far-shrink behavior.
 	-- Verify with /as debug on and the 'AS| near:' line (apparent width
-	-- and computed factor per plate).
-	nearBoost = 2.6,
+	-- and computed factor per plate). Ceiling: 3.0 since v0.4.4 (raised
+	-- from 2.6) - the plate width saturates at ~91 UI at extreme close
+	-- range, so the flat ceiling is the only lever that adds cover there;
+	-- at 2.6 the model's legs poked past the cover (owner, 2026-10-17).
+	nearBoost = 3.0,
 	debug = false,
 }
 
@@ -509,7 +512,7 @@ end
 -- boosted far plates (docs/NEAR-RAMP.md).
 local NEAR_RAMP_LO, NEAR_RAMP_HI = 75, 85
 local function nearBoostFor(apparent, ceiling)
-	local b = type(ceiling) == "number" and ceiling or 2.6
+	local b = type(ceiling) == "number" and ceiling or 3.0
 	if b <= 1 then return 1.0 end
 	if type(apparent) ~= "number" or apparent <= NEAR_RAMP_LO then return 1.0 end
 	local x = (apparent - NEAR_RAMP_LO) / (NEAR_RAMP_HI - NEAR_RAMP_LO)

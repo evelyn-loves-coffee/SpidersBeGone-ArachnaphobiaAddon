@@ -191,7 +191,9 @@ extra names and tracking calibration are preserved, and legacy
 `MyCovers` custom paths fall back to the fox. Migration
 runs both at script load and the actual SavedVariables restore point.
 
-Defaults: `trackScale=1.0`, `drop=0.5`, `nearBoost=2.6`,
+Defaults: `trackScale=1.0`, `drop=0.5`, `nearBoost=3.0` (ceiling raised
+from 2.6 in v0.4.4: plate width saturates at ~91 UI, so the flat ceiling
+is the only lever for extreme-close legs),
 fallback `coverSize=96`. The drop was calibrated on the partner's Tirisfal
 test round. The near-field boost (automatic since v0.4.1) uses accessible
 apparent plate width, not unavailable creature distance: a smooth ramp on

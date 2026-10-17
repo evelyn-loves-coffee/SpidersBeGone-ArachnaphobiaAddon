@@ -2,8 +2,10 @@
 
 **Status: reopened after the v0.4.2 in-game test, CLOSED in v0.4.3 — ramp
 moved to 75→85 UI inside the client's real apparent-width range (far clamp
-73, close ~90); 224/224 offline tests green. (Recorded 2026-10-17, fixed
-the same evening, second round.)**
+73, close ~90); 224/224 offline tests green. Follow-up v0.4.4 raised the
+close ceiling 2.6→3.0: plate width saturates at ~91, so the flat ceiling
+is the only lever for the legs poking past the cover at extreme close
+range. (Recorded 2026-10-17, fixed the same evening, second round.)**
 
 ## Second round (v0.4.2 in-game, 2026-10-17)
 

@@ -1318,7 +1318,7 @@ check(ArachnaphobiaShieldSettings.version == 5 and ArachnaphobiaShieldSettings.e
     and ArachnaphobiaShieldSettings.opacity == nil and ArachnaphobiaShieldSettings.coverSize == 96
     and ArachnaphobiaShieldSettings.trackScale == 1.0 and ArachnaphobiaShieldSettings.drop == 0.5
     and ArachnaphobiaShieldSettings.trackRelease == 0.5
-    and ArachnaphobiaShieldSettings.nearBoost == 2.6 and ArachnaphobiaShieldSettings.requireHostile == false
+    and ArachnaphobiaShieldSettings.nearBoost == 3.0 and ArachnaphobiaShieldSettings.requireHostile == false
     and ArachnaphobiaShieldSettings.minLevel == 1 and ArachnaphobiaShieldSettings.maxLevel == 99
     and #ArachnaphobiaShieldSettings.extraNames == 0 and #ArachnaphobiaShieldSettings.namePatterns == 0
     and ArachnaphobiaShieldSettings.debug == false, "reset: every saved setting returns to the factory default")

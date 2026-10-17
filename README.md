@@ -4,16 +4,20 @@ Addon for **World of Warcraft Forever** (classic 1.x-line client, v1.60.1) that
 covers spider models with a nameplate-attached UI element. UI-layer only: no model
 swaps, no game-file modification.
 
-**Status: v0.4.3 — near ramp moved inside the client's real apparent-width
-range (75-85 UI); far covers small again, live re-validation belongs on the
-partner's test machine.** In-game debug capture (2026-10-17) showed the
-client clamps far nameplates at **73 UI** and grows them to ~90 on approach
-- both earlier knees (30, then 60) sat *below* the client's minimum and
-boosted even far plates (x2.14 at the 73 clamp). v0.4.3 moves the ramp to
-75-85 UI so it lives inside the client's actual range: far plates (<= ~74)
-are unboosted and plate-proportional (the `/as near 1` far-shrink the owner
-wants kept), the boost smoothsteps to full `x2.6` by 85 - just below the
-measured close band (87-113 UI), so the cover is constant at close range.
+**Status: v0.4.4 — close ceiling raised x2.6 → x3.0 (legs at extreme close
+range); the 75-85 UI near ramp is validated in-game (far `73*1.00`, close
+`91*2.60` flat), live re-validation belongs on the partner's test
+machine.** In-game debug capture (2026-10-17) showed the client clamps far
+nameplates at **73 UI** and grows them to ~90 on approach - both earlier
+knees (30, then 60) sat *below* the client's minimum and boosted even far
+plates (x2.14 at the 73 clamp). v0.4.3 moved the ramp to 75-85 UI so it
+lives inside the client's actual range: far plates (<= ~74) are unboosted
+and plate-proportional (the `/as near 1` far-shrink the owner wants kept),
+the boost smoothsteps to the full ceiling by 85 - just below the measured
+close band (87-113 UI), so the cover is constant at close range. v0.4.4
+raises that ceiling from `x2.6` to `x3.0`: the plate width saturates at
+~91, so the flat ceiling is the only lever that adds cover at extreme
+close range, where the model's legs poked past the cover (owner, 2026-10-17).
 v0.4.1 retired the `/as near` level: the boost is computed automatically
 every 10 Hz tick from the nameplate's apparent width. Full history:
 docs/NEAR-RAMP.md. v0.4.0 fixed the
@@ -96,7 +100,7 @@ showing). True camera distance is unmeasurable on this client (every
 position API is absent), so the boost is not graded by distance: every
 10 Hz tick multiplies the tracked size by a smooth ramp of the plate's
 apparent width - none at/under 75 UI px, ramping up to the near-field
-boost (`x2.6`) at/above 85 UI px. The client's apparent width only spans
+boost (`x3.0`) at/above 85 UI px. The client's apparent width only spans
 ~73 (far clamp) to ~90 (close) UI px (debug capture 2026-10-17), so the
 ramp lives inside that real range: far plates stay unboosted and
 plate-proportional, and the 85 knee sits just below the measured close
