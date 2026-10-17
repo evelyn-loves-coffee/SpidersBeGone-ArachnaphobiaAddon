@@ -195,15 +195,17 @@ Defaults: `trackScale=1.0`, `drop=0.5`, `nearBoost=2.6`,
 fallback `coverSize=96`. The drop was calibrated on the partner's Tirisfal
 test round. The near-field boost (automatic since v0.4.1) uses accessible
 apparent plate width, not unavailable creature distance: a smooth ramp on
-apparent width (none at/under 60 UI px, full `nearBoost` at/above 80 UI px,
-flat across the measured 87–113 UI close band). v0.4.2 moved the low knee
-from 30 to 60 after in-game review: the 30 knee gave partial boosts to
-mid-range plates that `/as near 1` never did, so far spiders lost their
-small plate-proportional cover (owner screenshot 2026-10-17; issue, options
-table and fix: [NEAR-RAMP.md](NEAR-RAMP.md), closed in v0.4.2). Debug on,
-approach a spider, and read the `AS| near:` line (apparent width and
-computed factor) to verify. Do not change the sizing model without live
-measurements. Nameplate stacking/clamping can still move a cover away from
+apparent width (none at/under 75 UI px, full `nearBoost` at/above 85 UI px,
+flat across the measured 87–113 UI close band). The client's apparent-width
+range is only ~73 (far clamp) to ~90 (close) UI px (debug capture
+2026-10-17), so v0.4.3 moved the ramp inside that real range - earlier
+knees (30, then 60) sat below the 73 clamp and boosted even far plates
+×2.14 (owner: far covers "unnecessarily large"). Far plates (≤ ~74) are now
+unboosted and plate-proportional, keeping the `/as near 1` far-shrink
+behavior (issue, options table and full fix history:
+[NEAR-RAMP.md](NEAR-RAMP.md), closed in v0.4.3). Debug on, approach a
+spider, and read the `AS| near:` line (apparent width and computed factor)
+to verify. Do not change the sizing model without live measurements. Nameplate stacking/clamping can still move a cover away from
 the body, and very close models can extend beyond a cover. No UI-layer
 workaround for missing world projection is used.
 

@@ -17,7 +17,7 @@ Client facts (docs/PLAN.md §2, verified in-client 2026-10-13):
 ]]
 
 ArachnaphobiaShield = ArachnaphobiaShield or {}
-ArachnaphobiaShield.version = "0.4.2"
+ArachnaphobiaShield.version = "0.4.3"
 local A = ArachnaphobiaShield.Access
 
 ArachnaphobiaShield.hidden = nil  -- panic-hide seam (M4); true hides every cover
@@ -77,16 +77,20 @@ local DEFAULTS = {
 	-- distance signal the plate exposes is its apparent width (GetWidth x
 	-- GetEffectiveScale, in UI-scale px). Every 10 Hz tick multiplies the
 	-- tracked size by nearBoostFor(apparent): 1.0 at/under the ramp's low
-	-- knee (60 UI), smoothstepping to nearBoost at/above the high knee
-	-- (80 UI). The high knee sits below the measured close-range apparent
-	-- widths (87-113 UI, 1.205 px/UI calibration, 2026-10-16 screenshots)
-	-- so the boost is constant across the whole band the client clamps to
-	-- - the cover cannot "breathe". v0.4.2 moved the low knee from 30 to
-	-- 60 after in-game review (docs/NEAR-RAMP.md): the 30 knee gave partial
-	-- boosts to mid-range plates that /as near 1 never did, so far spiders
-	-- lost their small plate-proportional cover. Verify with /as debug on
-	-- and the 'AS| near:' line (apparent width and computed factor per
-	-- plate).
+	-- knee (75 UI), smoothstepping to nearBoost at/above the high knee
+	-- (85 UI). The client's actual apparent-width range is narrow: far
+	-- plates are clamped at 73.0 UI and grow to ~90 UI as the camera
+	-- approaches (debug capture 2026-10-17: far plates steady at 73.0,
+	-- approach traces 74.6->77.7->84.4->89.7 and 73.0->77.0->80.5->82.8
+	-- ->86.1), so the ramp must sit INSIDE that range - knees below the
+	-- 73 clamp boost far plates (the v0.4.1/v0.4.2 bug, docs/NEAR-RAMP.md).
+	-- The high knee sits below the measured close-range apparent widths
+	-- (87-113 UI, 1.205 px/UI calibration, 2026-10-16 screenshots) so the
+	-- boost is constant across the whole band the client clamps to - the
+	-- cover cannot "breathe". Far plates (<= ~74) stay unboosted and
+	-- plate-proportional, keeping the /as near 1 far-shrink behavior.
+	-- Verify with /as debug on and the 'AS| near:' line (apparent width
+	-- and computed factor per plate).
 	nearBoost = 2.6,
 	debug = false,
 }
@@ -493,14 +497,17 @@ end
 -- Near-field boost as a continuous function of the plate's apparent width
 -- (v0.4.1; the /as near level config is retired). Returns 1.0 at/under
 -- NEAR_RAMP_LO and smoothsteps to the nearBoost ceiling at/above
--- NEAR_RAMP_HI. The low knee (60 UI, v0.4.2 - see docs/NEAR-RAMP.md) keeps
--- far/mid plates unboosted so their covers stay plate-proportional and
--- shrink with distance; the high knee (80 UI) sits below the measured
--- close-range band (87-113 UI, 2026-10-16 screenshots at 1.205 px/UI), so
--- the boost is flat across the band the client clamps to - no cover
--- "breathing" at close range. Smoothstep keeps the slope zero at both
--- knees, so the size change starts and ends gently while approaching.
-local NEAR_RAMP_LO, NEAR_RAMP_HI = 60, 80
+-- NEAR_RAMP_HI. The client clamps far plates at ~73 UI apparent width and
+-- lets them grow to ~90 on approach (debug capture 2026-10-17), so the
+-- ramp lives inside that real range: low knee 75 keeps far plates
+-- unboosted (plate-proportional, small), high knee 85 sits below the
+-- measured close band (87-113 UI, 2026-10-16 calibration), so the boost
+-- is flat across the band the client clamps to - no cover "breathing" at
+-- close range. Smoothstep keeps the slope zero at both knees, so the size
+-- change starts and ends gently while approaching. History: knee 30
+-- (v0.4.1) and 60 (v0.4.2) both sat below the client's 73 clamp and
+-- boosted far plates (docs/NEAR-RAMP.md).
+local NEAR_RAMP_LO, NEAR_RAMP_HI = 75, 85
 local function nearBoostFor(apparent, ceiling)
 	local b = type(ceiling) == "number" and ceiling or 2.6
 	if b <= 1 then return 1.0 end

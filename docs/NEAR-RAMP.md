@@ -1,10 +1,37 @@
 # Open issue: the automatic near ramp keeps mid-range covers too large
 
-**Status: CLOSED in v0.4.2 — option A implemented (low knee 30→60), 222/222
-offline tests green, committed and pushed; in-game re-test still pending on
-the partner's machine (recorded 2026-10-17, fixed the same evening).**
+**Status: reopened after the v0.4.2 in-game test, CLOSED in v0.4.3 — ramp
+moved to 75→85 UI inside the client's real apparent-width range (far clamp
+73, close ~90); 224/224 offline tests green. (Recorded 2026-10-17, fixed
+the same evening, second round.)**
 
-## Resolution (v0.4.2)
+## Second round (v0.4.2 in-game, 2026-10-17)
+
+Owner report: "the far away spiders still had a quite large cover that was
+unnecessarily large." `/as debug on` capture (Tirisfal, Night Web Spiders):
+
+- Far plates were steady at **73.0 UI apparent width** across four plates
+  — the client's far clamp.
+- Approach traces: `74.6→77.7→84.4→89.7` and `73.0→77.0→80.5→82.8→86.1`;
+close values 89.7 / 89.0.
+- The far plates therefore sat at **73.0 × 2.14** — inside the v0.4.2
+  60→80 ramp window, because the client never reports apparent widths
+  below 73. Both earlier knees (30, 60) were *below the client's minimum*
+  and therefore boosted even far plates.
+
+**Fix (implemented, v0.4.3):** ramp **75→85 UI** — inside the client's
+actual 73–90 range: low knee 75 keeps far plates (≤ ~74) unboosted and
+plate-proportional (the `/as near 1` far-shrink kept); high knee 85 sits
+below the measured close band (87–113 UI) so the boost stays flat at
+×2.6 at close range. `Core.lua` (`NEAR_RAMP_LO/HI = 75, 85`), tests
+(apparent-73 unboosted, apparent-80 mid-ramp ×1.75 at ceiling 2.5,
+apparent-85 full, apparent-90 flat), README and HANDOFF updated.
+
+**Residual risk:** the 73 far clamp is a client/patch constant inferred
+from one capture; if a future client patch widens the far range, re-check
+the `AS| near:` line. The knees remain two constants in `Core.lua`.
+
+## Resolution (v0.4.2, superseded by v0.4.3)
 
 - `Core.lua`: `NEAR_RAMP_LO, NEAR_RAMP_HI = 60, 80`; comments and the
   DEFAULTS rationale updated; version 0.4.2.
