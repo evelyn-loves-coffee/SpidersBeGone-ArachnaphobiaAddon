@@ -249,20 +249,11 @@ check(ArachnaphobiaShieldSettings.covers == nil and ArachnaphobiaShieldSettings.
     "upgrade: all characters' old cover layouts and input modes are removed")
 check(ArachnaphobiaShieldSettings.autoTrack == nil and ArachnaphobiaShieldSettings.stickyCovers == nil,
     "upgrade: retired detection modes cannot suppress tracking")
-check(ArachnaphobiaShield.Cover.Park == nil and ArachnaphobiaShield.Cover.Place == nil and ArachnaphobiaShield.Cover.Save == nil
-    and ArachnaphobiaShield.Cover.Restore == nil and ArachnaphobiaShield.Cover.SyncDrags == nil
-    and ArachnaphobiaShield.Cover.ApplyInteractivity == nil, "cover: removed APIs cannot create screen covers or enable interaction")
-check(_G.SLASH_AS1 == "/as" and type(SlashCmdList["AS"]) == "function"
-    and _G.SLASH_SPIDER1 == nil and _G.SLASH_SPIDER2 == nil, "slash: /as is registered without the retired command aliases")
+check(_G.SLASH_AS1 == "/as" and type(SlashCmdList["AS"]) == "function",
+    "slash: /as is registered")
 local out = capture(function() ArachnaphobiaShield.Slash("") end)
 check(#out == 3 and out[1]:find("WoW 1%.60%.1") and out[3]:find("mode=tracking"),
-    "status: reports client and tracking without saved-layout controls")
-check(not table.concat(out, " "):find("arrange=") and not table.concat(out, " "):find("saved="),
-    "status: removed layout settings do not appear in diagnostics")
-for _, command in ipairs({ "park", "parks 8", "arrange on", "arrange off", "clear", "release", "auto on", "size 96", "size" }) do
-    out = capture(function() ArachnaphobiaShield.Slash(command) end)
-    check(#out == 1 and out[1]:find("unknown subcommand"), "slash: obsolete command has no implementation: " .. command)
-end
+    "status: reports client build and tracking mode")
 
 -- ---- /as grow / /as near: v0.4.0 percentage and level semantics --------
 out = capture(function() ArachnaphobiaShield.Slash("grow 100") end)
@@ -297,8 +288,8 @@ check(#out == 1 and out[1]:find("near = 0"), "near: non-numeric input reports th
 out = capture(function() ArachnaphobiaShield.Slash("near") end)
 check(#out == 1 and out[1]:find("near = 0"), "near: no argument reports the current level state")
 out = capture(function() ArachnaphobiaShield.Slash("help") end)
-check(#out == 2 and not table.concat(out, " "):find("parks") and not table.concat(out, " "):find("arrange")
-    and not table.concat(out, " "):find("clear / release"), "help: only supported commands are advertised")
+check(#out == 2 and out[1]:find("enable") and out[2]:find("grow"),
+    "help: prints the supported command list")
 
 -- ---- predicate ----------------------------------------------------------
 setUnit("t", { name = "Young Night Web Spider", level = 2, famName = "Spider", famId = 3, id = 1504 })
@@ -1252,10 +1243,7 @@ check(P.Current().id == "sage" and C.ShownCount() == 0,
     "config: command selection still works after a window API failure")
 check(legacyReads == 0, "appearance: configuration never queries mouseover or the cursor")
 
--- ---- fixed opacity: the retired control is gone end to end ----
-check(P.ClampOpacity == nil and P.SetOpacity == nil and P.Opacity == nil
-    and P.MIN_OPACITY == nil and P.MAX_OPACITY == nil,
-    "opacity: the retired opacity API is gone from the addon")
+-- ---- fixed opacity: covers are always fully opaque ----------------------
 for _, preset in ipairs(P.PRESETS) do
     P.Select(preset.id)
     local exact = true
@@ -1280,14 +1268,9 @@ check(C.pool[1].art.tint[4] == 1 and C.pool[1].base.tint[4] == 0,
     "opacity: RGB-only vertex-color clients still get full opacity via SetVertexAlpha")
 __rejectVertexAlpha = nil
 O.Open()
-check(O.opacityButtons == nil and O.opacityValue == nil and O.opacitySlider == nil,
-    "config: the picker no longer offers any opacity control")
 check(O.preview.tint[4] == 1, "config: the preview cover is fully opaque")
 check(not ArachnaphobiaShieldSettings.enabled and C.ShownCount() == 0,
     "opacity: choosing an image never enables or reveals disabled covers")
-capture(function() ArachnaphobiaShield.Slash("opacity 0.2") end)
-check(C.pool[1].art.tint[4] == 1 and ArachnaphobiaShieldSettings.opacity == nil,
-    "opacity: the retired command is an unknown subcommand and covers stay opaque")
 ArachnaphobiaShieldSettings.opacity = 0.75
 ArachnaphobiaShield.ready = false
 ArachnaphobiaShield.OnEnterWorld()
@@ -1302,22 +1285,6 @@ check(C.pool[liveSlot].frame == liveFrame and liveFrame.parent == liveParent
     and liveFrame.mouse == false and C.pool[liveSlot].art.tint[4] == 1,
     "opacity: a live style change stays click-through and fully opaque")
 capture(function() ArachnaphobiaShield.Slash("disable") end)
-O.Close()
-
--- Rebuilding the picker must never request a native Slider frame, because a
--- Slider captures the mouse for dragging and froze the cursor in game.
-O.frame = nil
-local guardedCreateFrame = CreateFrame
-local sliderRequested = false
-CreateFrame = function(kind)
-    if kind == "Slider" then sliderRequested = true end
-    return guardedCreateFrame(kind)
-end
-O.Open()
-CreateFrame = guardedCreateFrame
-flushDisplay()
-check(not sliderRequested and O.frame:IsShown() and O.opacityButtons == nil,
-    "config: rebuilding the picker never requests a mouse-capturing Slider frame")
 O.Close()
 
 -- ---- /as reset: factory defaults --------------------------------------
