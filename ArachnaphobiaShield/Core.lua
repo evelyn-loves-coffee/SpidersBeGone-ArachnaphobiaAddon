@@ -1,42 +1,43 @@
---[[ Spiders Be Gone — arachnophobia addon for World of Warcraft Forever.
+--[[ Arachnaphobia Shield — arachnophobia addon for World of Warcraft Forever.
 
 Tracking is the only automatic detection mode. Visible accessible spider
 nameplates receive click-through covers without targeting or pointer input.
 Covers never accept mouse input or store screen positions.
-  * /sbg enable: enable tracking (the default) and retry paused coverage.
-  * /sbg disable: hide every cover and stop tracking.
-  * Bare /sbg prints diagnostics.
+  * /as enable: enable tracking (the default) and retry paused coverage.
+  * /as disable: hide every cover and stop tracking.
+  * /as reset: restore every saved setting to its factory default.
+  * Bare /as prints diagnostics.
 
 Client facts (docs/PLAN.md §2, verified in-client 2026-10-13):
   * WoW Forever 1.60.1 / build 70374 / interface 16001, Lua 5.1
-  * RegisterEvent ERRORS on unknown events — only SBG6-confirmed events
-  * Slash = two-part registration (SLASH_SBGn + SlashCmdList["SBG"])
+  * RegisterEvent ERRORS on unknown events — only AS6-confirmed events
+  * Slash = two-part registration (SLASH_ASn + SlashCmdList["AS"])
   * UnitCanAttack is TWO-ARG on this client: UnitCanAttack(unit, target)
   * A ~10 Hz C_Timer driver scans nameplates; optional plate events refresh it.
 ]]
 
-SBeGone = SBeGone or {}
-SBeGone.version = "0.3.3"
-local A = SBeGone.Access
+ArachnaphobiaShield = ArachnaphobiaShield or {}
+ArachnaphobiaShield.version = "0.3.8"
+local A = ArachnaphobiaShield.Access
 
-SBeGone.hidden = nil  -- panic-hide seam (M4); true hides every cover
-SBeGone.ready = false -- true once a character's covers are restored
+ArachnaphobiaShield.hidden = nil  -- panic-hide seam (M4); true hides every cover
+ArachnaphobiaShield.ready = false -- true once a character's covers are restored
 
--- Diagnostic logging (/sbg debug on). Kept because SBG13 was solved from
+-- Diagnostic logging (/as debug on). Kept because AS13 was solved from
 -- chat alone; off by default so ordinary play stays quiet.
-SBeGone.debug = false
+ArachnaphobiaShield.debug = false
 
 -- M3.5 auto-track state: nameplate token -> cover slot index, plus the reverse
 -- map. Pool indices are RECYCLED, so a bare index is not an identity: both maps
--- are checked before an entry is adopted (see SBeGone.TrackTick).
-SBeGone.track = {}
-SBeGone.trackSlots = {}
+-- are checked before an entry is adopted (see ArachnaphobiaShield.TrackTick).
+ArachnaphobiaShield.track = {}
+ArachnaphobiaShield.trackSlots = {}
 
--- Was SBeGoneSettings already populated when our scripts started running?
+-- Was ArachnaphobiaShieldSettings already populated when our scripts started running?
 -- If it was not, this client may apply SavedVariables after addon Lua, and a
 -- restore done at script-load would read empty settings and take the first-run
--- branch (SBG13). Restore then waits for VARIABLES_LOADED.
-SBeGone.loadSnapshot = { settingsPresent = (SBeGoneSettings ~= nil) }
+-- branch (AS13). Restore then waits for VARIABLES_LOADED.
+ArachnaphobiaShield.loadSnapshot = { settingsPresent = (ArachnaphobiaShieldSettings ~= nil) }
 
 -- ---------------------------------------------------------------- settings
 local DEFAULTS = {
@@ -45,7 +46,9 @@ local DEFAULTS = {
 	enabled = true,
 	coverStyle = "fox",
 	customCover = "",
-	opacity = 1,
+	-- v0.3.8: opacity retired; covers are always fully opaque (the client
+	-- fades them at distance regardless). Legacy keys are dropped in
+	-- Appearance.Normalize.
 	coverSize = 96,
 	-- ADDITIONAL name fragments on top of the curated database (SpiderDB.lua).
 	-- Empty by default: the DB already carries the owner's fragments.
@@ -72,8 +75,8 @@ local DEFAULTS = {
 	-- distance signal the plate does expose: its apparent width
 	-- (GetWidth x GetEffectiveScale, in UI-scale px). At/above nearThreshold
 	-- the plate is saturated next to the model and the tracked size is
-	-- multiplied by nearBoost. Calibrate: /sbg debug on, walk 30y -> 2y
-	-- at a spider, read the 'SBG| near:' line, then /sbg near <N>. 0 = off.
+	-- multiplied by nearBoost. Calibrate: /as debug on, walk 30y -> 2y
+	-- at a spider, read the 'AS| near:' line, then /as near <N>. 0 = off.
 	nearThreshold = 0,
 	nearBoost = 2.6,
 	debug = false,
@@ -87,8 +90,8 @@ local function freshDefault(v)
 end
 
 local function EnsureSettings()
-	if type(SBeGoneSettings) ~= "table" then SBeGoneSettings = {} end
-	local s = SBeGoneSettings
+	if type(ArachnaphobiaShieldSettings) ~= "table" then ArachnaphobiaShieldSettings = {} end
+	local s = ArachnaphobiaShieldSettings
 	-- Versioned schema: missing or wrong-typed keys get fresh defaults;
 	-- supported preferences are kept.
 	for k, v in pairs(DEFAULTS) do
@@ -101,51 +104,73 @@ local function EnsureSettings()
 	for _, key in ipairs({ "autoTrack", "stickyCovers", "parkCount", "arrange", "covers", "color" }) do
 		s[key] = nil
 	end
-	SBeGone.Appearance.Normalize(s)
+	ArachnaphobiaShield.Appearance.Normalize(s)
 	s.version = DEFAULTS.version
-	SBeGone.debug = (s.debug == true)
+	ArachnaphobiaShield.debug = (s.debug == true)
 end
 EnsureSettings()
 
--- ----------------------------------------------------------------- slash
-_G.SLASH_SBG1 = "/sbg"
+-- /as reset: restore the SavedVariables table to factory defaults and apply
+-- them live the way the load path does. Replacing the global table is safe:
+-- every consumer reads ArachnaphobiaShieldSettings fresh, and the client saves the table
+-- the global references at shutdown.
+function ArachnaphobiaShield.Reset()
+	local s = {}
+	for k, v in pairs(DEFAULTS) do s[k] = freshDefault(v) end
+	ArachnaphobiaShieldSettings = s
+	ArachnaphobiaShield.Appearance.Normalize(s)
+	ArachnaphobiaShield.debug = (s.debug == true)
+	-- The default is tracking on, so resume exactly like /as enable.
+	ArachnaphobiaShield.DeathWarning.Clear()
+	ArachnaphobiaShield.autoSuspended = false
+	ArachnaphobiaShield.trackFailures = 0
+	ArachnaphobiaShield.tickErrors = 0
+	if ArachnaphobiaShield.ready then
+		ArachnaphobiaShield.ClearTrack()
+		ArachnaphobiaShield.Cover.Init()
+		ArachnaphobiaShield.Cover.ApplyStyle()
+		ArachnaphobiaShield.Refresh()
+	end
+	if ArachnaphobiaShield.Config and ArachnaphobiaShield.Config.frame then ArachnaphobiaShield.Config.Refresh() end
+	print("AS| settings restored to defaults - tracking on, fox cover")
+end
 
-function SBeGone.Slash(msg)
+-- ----------------------------------------------------------------- slash
+_G.SLASH_AS1 = "/as"
+
+function ArachnaphobiaShield.Slash(msg)
 	local first = string.match(msg or "", "^%s*(%S+)") or ""
 	if first == "" then
-		SBeGone.Selftest()
+		ArachnaphobiaShield.Selftest()
 	elseif first == "config" or first == "options" then
-		SBeGone.Config.Open()
+		ArachnaphobiaShield.Config.Open()
 	elseif first == "cover" then
-		SBeGone.Appearance.Command((msg or ""):match("^%s*%S+%s*(.-)%s*$"))
-	elseif first == "opacity" then
-		local value = tonumber((msg or ""):match("^%s*%S+%s+(%S+)%s*$"))
-		if value then SBeGone.Appearance.SetOpacity(value) end
-		print(("SBG| opacity = %d%% (80-100%%; /sbg config or /sbg opacity 0.8-1)")
-			:format(math.floor(SBeGone.Appearance.Opacity() * 100 + 0.5)))
+		ArachnaphobiaShield.Appearance.Command((msg or ""):match("^%s*%S+%s*(.-)%s*$"))
 	elseif first == "on" or first == "enable" then
-		SBeGone.DeathWarning.Clear()
-		SBeGoneSettings.enabled = true
-		SBeGone.autoSuspended = false
-		SBeGone.trackFailures = 0
-		SBeGone.tickErrors = 0
-		if SBeGone.ready then
-			SBeGone.ClearTrack()
-			SBeGone.Cover.Init()
-			SBeGone.Cover.ApplyStyle()
-			SBeGone.Refresh()
+		ArachnaphobiaShield.DeathWarning.Clear()
+		ArachnaphobiaShieldSettings.enabled = true
+		ArachnaphobiaShield.autoSuspended = false
+		ArachnaphobiaShield.trackFailures = 0
+		ArachnaphobiaShield.tickErrors = 0
+		if ArachnaphobiaShield.ready then
+			ArachnaphobiaShield.ClearTrack()
+			ArachnaphobiaShield.Cover.Init()
+			ArachnaphobiaShield.Cover.ApplyStyle()
+			ArachnaphobiaShield.Refresh()
 		end
-		print("SBG| enabled - tracking visible spider nameplates")
+		print("AS| enabled - tracking visible spider nameplates")
 	elseif first == "off" or first == "disable" then
-		SBeGone.DeathWarning.Clear()
-		SBeGoneSettings.enabled = false
-		if SBeGone.ready then
-			SBeGone.ClearTrack()
-			SBeGone.Cover.HideAll()
+		ArachnaphobiaShield.DeathWarning.Clear()
+		ArachnaphobiaShieldSettings.enabled = false
+		if ArachnaphobiaShield.ready then
+			ArachnaphobiaShield.ClearTrack()
+			ArachnaphobiaShield.Cover.HideAll()
 		end
-		print("SBG| disabled - all covers hidden (/sbg enable restores tracking)")
+		print("AS| disabled - all covers hidden (/as enable restores tracking)")
 	elseif first == "toggle" then
-		SBeGone.Slash(SBeGoneSettings.enabled and "disable" or "enable")
+		ArachnaphobiaShield.Slash(ArachnaphobiaShieldSettings.enabled and "disable" or "enable")
+	elseif first == "reset" then
+		ArachnaphobiaShield.Reset()
 	elseif first == "grow" or first == "drop" or first == "size" then
 		-- grow = cover size relative to the plate; drop = how far below the
 		-- plate the cover is centred (models hang below their nameplate);
@@ -153,8 +178,8 @@ function SBeGone.Slash(msg)
 		local key = (first == "grow") and "trackScale" or (first == "drop") and "drop" or "coverSize"
 		local v = tonumber(string.match(msg or "", "^%s*%S+%s+(%S+)"))
 		if not v then
-			print(("SBG| %s = %s (set with: /sbg %s N)"):format(key,
-				tostring(SBeGoneSettings[key]), first))
+			print(("AS| %s = %s (set with: /as %s N)"):format(key,
+				tostring(ArachnaphobiaShieldSettings[key]), first))
 		else
 			local lo, hi = 0.2, 6
 			if first == "drop" then
@@ -163,76 +188,76 @@ function SBeGone.Slash(msg)
 				lo, hi = 16, 512
 			end
 			if v < lo then v = lo elseif v > hi then v = hi end
-			SBeGoneSettings[key] = v
-			print(("SBG| %s = %.2f"):format(key, v))
+			ArachnaphobiaShieldSettings[key] = v
+			print(("AS| %s = %.2f"):format(key, v))
 		end
 	elseif first == "near" then
 		-- Near-field boost threshold: the plate's apparent width (UI-scale px,
-		-- from the 'SBG| near:' debug line) at/above which the client is
+		-- from the 'AS| near:' debug line) at/above which the client is
 		-- holding the nameplate in its near band and the tracked cover is
 		-- multiplied by the near-field boost (close spiders, legs showing).
 		local v = tonumber(string.match(msg or "", "^%s*%S+%s+(%S+)"))
 		if not v then
-			print(("SBG| near = %s (set with: /sbg near N - 0 off; read N from the 'SBG| near:' debug line)"):format(
-				tostring(SBeGoneSettings.nearThreshold)))
+			print(("AS| near = %s (set with: /as near N - 0 off; read N from the 'AS| near:' debug line)"):format(
+				tostring(ArachnaphobiaShieldSettings.nearThreshold)))
 		else
 			v = math.floor(v)
 			if v < 0 then v = 0 elseif v > 1000 then v = 1000 end
-			SBeGoneSettings.nearThreshold = v
-			print(("SBG| near = %d (0 = off)"):format(v))
+			ArachnaphobiaShieldSettings.nearThreshold = v
+			print(("AS| near = %d (0 = off)"):format(v))
 		end
 	elseif first == "debug" then
 		local a = string.match(msg or "", "^%s*debug%s+(%S+)") or ""
-		if a == "on" or a == "off" then SBeGoneSettings.debug = (a == "on") end
-		SBeGone.debug = (SBeGoneSettings.debug == true)
-		print("SBG| debug logging " .. (SBeGone.debug and "on" or "off"))
+		if a == "on" or a == "off" then ArachnaphobiaShieldSettings.debug = (a == "on") end
+		ArachnaphobiaShield.debug = (ArachnaphobiaShieldSettings.debug == true)
+		print("AS| debug logging " .. (ArachnaphobiaShield.debug and "on" or "off"))
 	elseif first == "name" then
 		-- Owner escape hatch: see a spider that is not covered, name it, done.
 		-- EXACT names only (extraNames) — a loose fragment could blanket half a
 		-- zone, and curated fragments already live in SpiderDB.lua.
 		local name = (msg or ""):match("^%s*%S+%s*(.-)%s*$")
 		if not name or name == "" then
-			print("SBG| usage: /sbg name <exact creature name>  (list them with /sbg names)")
+			print("AS| usage: /as name <exact creature name>  (list them with /as names)")
 		else
-			local list = (type(SBeGoneSettings.extraNames) == "table") and SBeGoneSettings.extraNames or {}
+			local list = (type(ArachnaphobiaShieldSettings.extraNames) == "table") and ArachnaphobiaShieldSettings.extraNames or {}
 			local dup
 			for idx, existing in ipairs(list) do
 				if type(existing) == "string" and existing:lower() == name:lower() then dup = idx end
 			end
 			if dup then
-				print(("SBG| '%s' is already on your extra-name list (entry %d)"):format(name, dup))
+				print(("AS| '%s' is already on your extra-name list (entry %d)"):format(name, dup))
 			elseif #list >= 64 then
-				print("SBG| extra-name list is full (64) - remove one with /sbg forget <name>")
+				print("AS| extra-name list is full (64) - remove one with /as forget <name>")
 			else
 				list[#list + 1] = name
-				SBeGoneSettings.extraNames = list
-				print(("SBG| will cover '%s' from now on (%d extra) - undo with /sbg forget %s")
+				ArachnaphobiaShieldSettings.extraNames = list
+				print(("AS| will cover '%s' from now on (%d extra) - undo with /as forget %s")
 					:format(name, #list, name))
 			end
 		end
 	elseif first == "names" then
-		local list = (type(SBeGoneSettings.extraNames) == "table") and SBeGoneSettings.extraNames or {}
+		local list = (type(ArachnaphobiaShieldSettings.extraNames) == "table") and ArachnaphobiaShieldSettings.extraNames or {}
 		if #list == 0 then
-			print("SBG| no extra names yet - add one with /sbg name <exact creature name>")
+			print("AS| no extra names yet - add one with /as name <exact creature name>")
 		else
-			print(("SBG| %d extra name(s):"):format(#list))
+			print(("AS| %d extra name(s):"):format(#list))
 			local line = ""
 			for _, name in ipairs(list) do
 				local piece = tostring(name)
 				if line ~= "" and #line + #piece + 2 > 200 then
-					print("SBG|  " .. line)
+					print("AS|  " .. line)
 					line = piece
 				else
 					line = (line == "") and piece or (line .. ", " .. piece)
 				end
 			end
-			if line ~= "" then print("SBG|  " .. line) end
+			if line ~= "" then print("AS|  " .. line) end
 		end
 	elseif first == "forget" then
 		local name = (msg or ""):match("^%s*%S+%s*(.-)%s*$")
-		local list = (type(SBeGoneSettings.extraNames) == "table") and SBeGoneSettings.extraNames or {}
+		local list = (type(ArachnaphobiaShieldSettings.extraNames) == "table") and ArachnaphobiaShieldSettings.extraNames or {}
 		if not name or name == "" then
-			print("SBG| usage: /sbg forget <name>")
+			print("AS| usage: /as forget <name>")
 		else
 			local kept, removed = {}, 0
 			for _, existing in ipairs(list) do
@@ -242,32 +267,32 @@ function SBeGone.Slash(msg)
 					kept[#kept + 1] = existing
 				end
 			end
-			SBeGoneSettings.extraNames = kept
+			ArachnaphobiaShieldSettings.extraNames = kept
 			print(removed > 0
-				and (("SBG| forgot '%s' (%d extra names left)"):format(name, #kept))
-				or  (("SBG| '%s' was not on your extra-name list (%d)"):format(name, #kept)))
+				and (("AS| forgot '%s' (%d extra names left)"):format(name, #kept))
+				or  (("AS| '%s' was not on your extra-name list (%d)"):format(name, #kept)))
 		end
 	elseif first == "help" then
 		-- No '|' chars in chat text: the WoW chat filter eats chat-control
-		-- sequences like |t / |h (SBG11) — use ' / ' separators.
-		print("SBG| /sbg enable / disable / config - image picker / cover <fox / red / blue / sage / charcoal / custom PATH>")
-		print("SBG| Advanced: opacity 0.8-1 / grow N / drop N / near N / size N / name X / names / forget X / debug on / debug off")
+		-- sequences like |t / |h (AS11) — use ' / ' separators.
+		print("AS| /as enable / disable / reset / config - image picker / cover <fox / red / blue / sage / charcoal / custom PATH>")
+		print("AS| Advanced: grow N / drop N / near N / size N / name X / names / forget X / debug on / debug off")
 	else
-		print(("SBG| unknown subcommand '%s' - /sbg help for usage"):format(first))
+		print(("AS| unknown subcommand '%s' - /as help for usage"):format(first))
 	end
 end
 
-SlashCmdList["SBG"] = function(m)
-	SBeGone.Slash(m)
+SlashCmdList["AS"] = function(m)
+	ArachnaphobiaShield.Slash(m)
 end
 
 -- ---------------------------------------------------------------- selftest
 local lastSelftest = 0
-function SBeGone.Selftest()
+function ArachnaphobiaShield.Selftest()
 	local now = GetTime()
 	if now - lastSelftest < 0.25 then return end
 	lastSelftest = now
-	-- SBG2 (docs/API-VERIFICATION.md): GetBuildInfo returns FOUR values on this
+	-- AS2 (docs/API-VERIFICATION.md): GetBuildInfo returns FOUR values on this
 	-- client - "1.60.1", "70374", "Oct 12 2026", "16001" - i.e. build string,
 	-- build number, build date, interface version. Not major/minor/patch.
 	-- _VERSION already reads "Lua 5.1", so the old "Lua %s" prefix printed
@@ -276,84 +301,84 @@ function SBeGone.Selftest()
 	local build, buildNo, buildDate, iface = GetBuildInfo()
 	local lua = (type(_VERSION) == "string" and _VERSION or "Lua 5.1")
 	lua = "Lua " .. ((lua:gsub("^%s*Lua%s+", "")))
-	print(("SBG| v%s | WoW %s build %s (%s) | interface %s | %s"):format(
-		SBeGone.version, tostring(build), tostring(buildNo), tostring(buildDate),
+	print(("AS| v%s | WoW %s build %s (%s) | interface %s | %s"):format(
+		ArachnaphobiaShield.version, tostring(build), tostring(buildNo), tostring(buildDate),
 		tostring(iface), lua))
-	local s = SBeGoneSettings
-	local warning = SBeGone.DeathWarning
+	local s = ArachnaphobiaShieldSettings
+	local warning = ArachnaphobiaShield.DeathWarning
 	local popupState = warning.popupUnavailable and "unavailable" or (warning.expires and "active" or "idle")
-	print(("SBG| enabled=%s | char=%s | driver=%s | corpsePopup=%s | cover=%s"):format(
-		tostring(s.enabled), tostring(SBeGone.char),
-		tostring(SBeGone.driverOn), popupState, SBeGone.Appearance.Current().id))
+	print(("AS| enabled=%s | char=%s | driver=%s | corpsePopup=%s | cover=%s"):format(
+		tostring(s.enabled), tostring(ArachnaphobiaShield.char),
+		tostring(ArachnaphobiaShield.driverOn), popupState, ArachnaphobiaShield.Appearance.Current().id))
 	local tracked = 0
-	if type(SBeGone.track) == "table" then
-		for _, slot in pairs(SBeGone.track) do
-			if SBeGone.Cover.IsAllocated(slot) then tracked = tracked + 1 end
+	if type(ArachnaphobiaShield.track) == "table" then
+		for _, slot in pairs(ArachnaphobiaShield.track) do
+			if ArachnaphobiaShield.Cover.IsAllocated(slot) then tracked = tracked + 1 end
 		end
 	end
-	print(("SBG| mode=tracking tracked=%d grow=%s drop=%s near=%s | covers shown=%d/%d | fallbackSize=%s | limited=%s paused=%s"):format(
+	print(("AS| mode=tracking tracked=%d grow=%s drop=%s near=%s | covers shown=%d/%d | fallbackSize=%s | limited=%s paused=%s"):format(
 		tracked, tostring(s.trackScale),
 		tostring(s.drop), tostring(s.nearThreshold),
-		SBeGone.Cover.ShownCount(), SBeGone.Cover.MAX,
-		tostring(s.coverSize), tostring(SBeGone.coverageLimited == true), tostring(SBeGone.autoSuspended == true)))
+		ArachnaphobiaShield.Cover.ShownCount(), ArachnaphobiaShield.Cover.MAX,
+		tostring(s.coverSize), tostring(ArachnaphobiaShield.coverageLimited == true), tostring(ArachnaphobiaShield.autoSuspended == true)))
 end
 
 -- ----------------------------------------------------------------- driver
 -- ~10 Hz tick via a self-rescheduling C_Timer.After loop (C_Timer confirmed
--- present on this client). If the optional SBG7 probe ever shows OnUpdate
+-- present on this client). If the optional AS7 probe ever shows OnUpdate
 -- scripts are live, the driver can switch to an OnUpdate script — the tick
 -- function stays identical (PLAN §3.4).
 local tickInterval = 0.1
 
-function SBeGone.Tick()
+function ArachnaphobiaShield.Tick()
 	-- Reschedule FIRST so a one-frame Update error can never kill the
 	-- driver; the error is surfaced in chat instead of dying silently.
 	if C_Timer and C_Timer.After then
-		C_Timer.After(tickInterval, SBeGone.Tick)
+		C_Timer.After(tickInterval, ArachnaphobiaShield.Tick)
 	end
 	-- Expiration/cleanup must still run while tracking is disabled or paused.
-	local warningOK = pcall(SBeGone.DeathWarning.Tick)
-	if not warningOK then SBeGone.DeathWarning.Clear() end
-	if SBeGone.ready and SBeGoneSettings.enabled and not SBeGone.hidden then
-		SBeGone.Refresh()
+	local warningOK = pcall(ArachnaphobiaShield.DeathWarning.Tick)
+	if not warningOK then ArachnaphobiaShield.DeathWarning.Clear() end
+	if ArachnaphobiaShield.ready and ArachnaphobiaShieldSettings.enabled and not ArachnaphobiaShield.hidden then
+		ArachnaphobiaShield.Refresh()
 	end
 end
 
-function SBeGone.Refresh()
-	if not SBeGone.ready or not SBeGoneSettings.enabled or SBeGone.hidden then return end
-	local ok, err = pcall(SBeGone.Update)
+function ArachnaphobiaShield.Refresh()
+	if not ArachnaphobiaShield.ready or not ArachnaphobiaShieldSettings.enabled or ArachnaphobiaShield.hidden then return end
+	local ok, err = pcall(ArachnaphobiaShield.Update)
 	if not ok then
-		SBeGone.coverageLimited = true
-		SBeGone.tickErrors = (SBeGone.tickErrors or 0) + 1
-		if SBeGone.tickErrors <= 3 then
-			print("SBG| tick error: " .. tostring(err))
-		elseif SBeGone.tickErrors == 4 then
+		ArachnaphobiaShield.coverageLimited = true
+		ArachnaphobiaShield.tickErrors = (ArachnaphobiaShield.tickErrors or 0) + 1
+		if ArachnaphobiaShield.tickErrors <= 3 then
+			print("AS| tick error: " .. tostring(err))
+		elseif ArachnaphobiaShield.tickErrors == 4 then
 			-- Stop rather than trying another automatic detection channel.
-			SBeGone.autoSuspended = true
-			SBeGone.ClearTrack()
-			print("SBG| automatic covers paused after errors; coverage limited (/sbg enable to retry)")
+			ArachnaphobiaShield.autoSuspended = true
+			ArachnaphobiaShield.ClearTrack()
+			print("AS| automatic covers paused after errors; coverage limited (/as enable to retry)")
 		end
 	else
-		SBeGone.tickErrors = 0
+		ArachnaphobiaShield.tickErrors = 0
 	end
 end
 
-function SBeGone.StartDriver()
-	if SBeGone.driverOn then return end
+function ArachnaphobiaShield.StartDriver()
+	if ArachnaphobiaShield.driverOn then return end
 	if not (C_Timer and C_Timer.After) then
-		print("SBG| ERROR: C_Timer.After missing - tick driver cannot start (run SBG7, PLAN §12.10)")
+		print("AS| ERROR: C_Timer.After missing - tick driver cannot start (run AS7, PLAN §12.10)")
 		return
 	end
-	SBeGone.driverOn = true
-	C_Timer.After(tickInterval, SBeGone.Tick)
+	ArachnaphobiaShield.driverOn = true
+	C_Timer.After(tickInterval, ArachnaphobiaShield.Tick)
 end
 
 -- Scan accessible native nameplates. Covers never handle pointer input.
-function SBeGone.Update()
-	if not SBeGone.ready or not SBeGoneSettings.enabled or SBeGone.hidden then return end
-	SBeGone.coverageLimited = SBeGone.autoSuspended == true
-	SBeGone.Cover.RetryReleases()
-	if not SBeGone.autoSuspended then SBeGone.TrackTick() end
+function ArachnaphobiaShield.Update()
+	if not ArachnaphobiaShield.ready or not ArachnaphobiaShieldSettings.enabled or ArachnaphobiaShield.hidden then return end
+	ArachnaphobiaShield.coverageLimited = ArachnaphobiaShield.autoSuspended == true
+	ArachnaphobiaShield.Cover.RetryReleases()
+	if not ArachnaphobiaShield.autoSuspended then ArachnaphobiaShield.TrackTick() end
 end
 
 -- ------------------------------------------------------------ auto-track (M3.5)
@@ -362,7 +387,7 @@ end
 -- as the spider moves and resizes" - no target, no mouseover.
 --
 -- Why anchoring is the ONLY legal way to "move": the client refuses to say
--- where a nameplate is. SBG15 (in game 2026-10-15):
+-- where a nameplate is. AS15 (in game 2026-10-15):
 --   NamePlate1:GetRect()/GetCenter()/GetPoint() ->
 --     "Action[FrameMeasurement] failed because[Can't measure restricted regions]"
 --   GetNamePlateAtPosition -> nil (hit-test reverse lookup absent)
@@ -410,7 +435,7 @@ local function plateShown(plate)
 	return ok and shown == true
 end
 
-function SBeGone.PlateFrameFor(token, idx)
+function ArachnaphobiaShield.PlateFrameFor(token, idx)
 	if C_NamePlate and C_NamePlate.GetNamePlateForUnit then
 		local f, _, ok = A.Query(C_NamePlate.GetNamePlateForUnit, token)
 		-- A successful nil means there is NO plate, not permission to adopt a
@@ -433,7 +458,7 @@ end
 -- that scale into their size as well would apply perspective twice. Only the
 -- screen-size limits/fallback need converting from UI units to plate units.
 -- The only plate properties this client answers (N7); everything else
--- throws (SBG15). Both reads are access-guarded.
+-- throws (AS15). Both reads are access-guarded.
 local function plateReads(plate)
 	local w = A.Query(function() return plate:GetWidth() end)
 	local ps = A.Query(function() return plate:GetEffectiveScale() end)
@@ -449,7 +474,7 @@ local function plateSize(w, ps, ourScale, grow, fallback)
 	return math.max(MIN_TRACK * toLocal, math.min(MAX_TRACK * toLocal, size))
 end
 
-function SBeGone.OurScale()
+function ArachnaphobiaShield.OurScale()
 	local ou = 1
 	if UIParent and type(UIParent.GetEffectiveScale) == "function" then
 		local v = A.Query(UIParent.GetEffectiveScale, UIParent)
@@ -459,69 +484,69 @@ function SBeGone.OurScale()
 end
 
 local function bindTrack(token, slot)
-	SBeGone.track[token] = slot
-	if slot ~= nil then SBeGone.trackSlots[slot] = token end
+	ArachnaphobiaShield.track[token] = slot
+	if slot ~= nil then ArachnaphobiaShield.trackSlots[slot] = token end
 end
 
 local function dropTrack(token)
-	local slot = SBeGone.track[token]
-	if slot ~= nil and SBeGone.trackSlots[slot] == token then
-		SBeGone.trackSlots[slot] = nil
+	local slot = ArachnaphobiaShield.track[token]
+	if slot ~= nil and ArachnaphobiaShield.trackSlots[slot] == token then
+		ArachnaphobiaShield.trackSlots[slot] = nil
 	end
-	SBeGone.track[token] = nil
+	ArachnaphobiaShield.track[token] = nil
 end
 
 -- Cover calls this when it sacrifices a slot to make room: an entry that points
 -- at a slot we no longer own has to go, otherwise the next tick adopts whatever
 -- unit now owns that index.
-if SBeGone.Cover then
-	SBeGone.Cover.onEvict = function(slot)
-		local token = SBeGone.trackSlots and SBeGone.trackSlots[slot]
+if ArachnaphobiaShield.Cover then
+	ArachnaphobiaShield.Cover.onEvict = function(slot)
+		local token = ArachnaphobiaShield.trackSlots and ArachnaphobiaShield.trackSlots[slot]
 		if token ~= nil then
-			SBeGone.trackSlots[slot] = nil
-			if SBeGone.track[token] == slot then SBeGone.track[token] = nil end
+			ArachnaphobiaShield.trackSlots[slot] = nil
+			if ArachnaphobiaShield.track[token] == slot then ArachnaphobiaShield.track[token] = nil end
 		end
 	end
 end
 
 -- Release the entire nameplate-only pool, including deferred/orphaned slots.
-function SBeGone.ClearTrack()
-	SBeGone.Cover.ClearAll()
-	SBeGone.track, SBeGone.trackSlots = {}, {}
+function ArachnaphobiaShield.ClearTrack()
+	ArachnaphobiaShield.Cover.ClearAll()
+	ArachnaphobiaShield.track, ArachnaphobiaShield.trackSlots = {}, {}
 end
 
-function SBeGone.TrackTick()
-	if SBeGone.autoSuspended or not SBeGoneSettings.enabled or SBeGone.hidden then return end
-	local C, U = SBeGone.Cover, SBeGone.Units
-	local s = SBeGoneSettings
-	local t = SBeGone.track
+function ArachnaphobiaShield.TrackTick()
+	if ArachnaphobiaShield.autoSuspended or not ArachnaphobiaShieldSettings.enabled or ArachnaphobiaShield.hidden then return end
+	local C, U = ArachnaphobiaShield.Cover, ArachnaphobiaShield.Units
+	local s = ArachnaphobiaShieldSettings
+	local t = ArachnaphobiaShield.track
 	local grow = tonumber(s.trackScale) or 1.6
 	local dropK = tonumber(s.drop) or 0.5
 	local nearT = tonumber(s.nearThreshold) or 0
 	local nearB = tonumber(s.nearBoost) or 2.6
 	local grace = math.max(1, math.floor(((tonumber(s.trackRelease) or 0.5)
 		/ tickInterval) + 0.5))
-	local ourScale = SBeGone.OurScale()
+	local ourScale = ArachnaphobiaShield.OurScale()
 	local live = {}
-	local nearDbg = SBeGone.debug and {} or nil
+	local nearDbg = ArachnaphobiaShield.debug and {} or nil
 
 	for i = 1, MAX_PLATES_SCAN do
 		local token = "nameplate" .. i
-		-- Read-only unit queries only (SBG-verified: UnitExists / UnitIsVisible
+		-- Read-only unit queries only (AS-verified: UnitExists / UnitIsVisible
 		-- / UnitCreatureFamily all answer for nameplate tokens).
 		if (not UnitExists or A.Query(UnitExists, token) == true)
 			and (not UnitIsVisible or A.Query(UnitIsVisible, token) == true) then
 			local isSpider = U.IsSpider(token)
 			if isSpider then
-				SBeGone.DeathWarning.Observe(token)
-				local plate = SBeGone.PlateFrameFor(token, i)
+				ArachnaphobiaShield.DeathWarning.Observe(token)
+				local plate = ArachnaphobiaShield.PlateFrameFor(token, i)
 				local slot = t[token]
 				if plate then
 					live[token] = true
 					-- Adopt an entry only if its allocation and reverse map agree:
 					-- pool indices are recycled between different units.
 					if slot == nil or not C.IsAllocated(slot)
-						or SBeGone.trackSlots[slot] ~= token then
+						or ArachnaphobiaShield.trackSlots[slot] ~= token then
 						slot = C.Allocate()
 						if slot ~= nil then
 							bindTrack(token, slot)
@@ -549,15 +574,15 @@ function SBeGone.TrackTick()
 							-- Release the slot; do not leave an orphaned screen cover.
 							C.Release(slot)
 							dropTrack(token)
-							SBeGone.trackFailures = (SBeGone.trackFailures or 0) + 1
-							if SBeGone.trackFailures == 20 then
-								SBeGone.autoSuspended = true
-								print("SBG| the client would not anchor covers - automatic covers paused; coverage limited (/sbg enable to retry)")
+							ArachnaphobiaShield.trackFailures = (ArachnaphobiaShield.trackFailures or 0) + 1
+							if ArachnaphobiaShield.trackFailures == 20 then
+								ArachnaphobiaShield.autoSuspended = true
+								print("AS| the client would not anchor covers - automatic covers paused; coverage limited (/as enable to retry)")
 							end
 						end
 					end
 				else
-					SBeGone.coverageLimited = true
+					ArachnaphobiaShield.coverageLimited = true
 				end
 			end
 		end
@@ -567,10 +592,10 @@ function SBeGone.TrackTick()
 	-- width per tracked spider, for choosing the near-field threshold.
 	if nearDbg and #nearDbg > 0 then
 		local now = GetTime()
-		if now - (SBeGone.nearDbgAt or 0) >= 1 then
-			SBeGone.nearDbgAt = now
+		if now - (ArachnaphobiaShield.nearDbgAt or 0) >= 1 then
+			ArachnaphobiaShield.nearDbgAt = now
 			table.sort(nearDbg)
-			print("SBG| near: " .. table.concat(nearDbg, " "))
+			print("AS| near: " .. table.concat(nearDbg, " "))
 		end
 	end
 
@@ -603,46 +628,46 @@ end
 -- ---------------------------------------------------------------- lifecycle
 -- Wait for a character and its actual SavedVariables before applying the
 -- settings migration. This client may supply them after addon script load.
-function SBeGone.OnEnterWorld()
-	if SBeGone.ready then return true end
-	if not SBeGone.loadSnapshot.settingsPresent and not SBeGone.sawVariablesLoaded then
+function ArachnaphobiaShield.OnEnterWorld()
+	if ArachnaphobiaShield.ready then return true end
+	if not ArachnaphobiaShield.loadSnapshot.settingsPresent and not ArachnaphobiaShield.sawVariablesLoaded then
 		return false
 	end
 	EnsureSettings() -- also migrate SavedVariables applied after script load
 	local char = UnitName and UnitName("player")
 	if not char then return false end -- still at character select
-	SBeGone.char = char
-	SBeGone.ready = true
-	SBeGone.DeathWarning.Clear()
+	ArachnaphobiaShield.char = char
+	ArachnaphobiaShield.ready = true
+	ArachnaphobiaShield.DeathWarning.Clear()
 	-- Every cover is rebuilt from live nameplates; none are restored from disk.
-	SBeGone.track = {}
-	SBeGone.trackSlots = {}
-	SBeGone.trackFailures = 0
-	SBeGone.autoSuspended = false
-	SBeGone.tickErrors = 0
-	SBeGone.Cover.Init()
-	SBeGone.Cover.ClearAll()
-	SBeGone.Cover.ApplyStyle()
-	SBeGone.StartDriver()
+	ArachnaphobiaShield.track = {}
+	ArachnaphobiaShield.trackSlots = {}
+	ArachnaphobiaShield.trackFailures = 0
+	ArachnaphobiaShield.autoSuspended = false
+	ArachnaphobiaShield.tickErrors = 0
+	ArachnaphobiaShield.Cover.Init()
+	ArachnaphobiaShield.Cover.ClearAll()
+	ArachnaphobiaShield.Cover.ApplyStyle()
+	ArachnaphobiaShield.StartDriver()
 	return true
 end
 
 -- Restore when we can, otherwise ask again for ~10 s (C_Timer.After is proven
 -- present; the no-op in the offline harness makes the retry inert there).
-function SBeGone.RetryEnterWorld()
-	if SBeGone.ready then return end
-	if SBeGone.OnEnterWorld() then return end
-	SBeGone.retries = (SBeGone.retries or 0) + 1
-	if SBeGone.retries >= 20 then return end
+function ArachnaphobiaShield.RetryEnterWorld()
+	if ArachnaphobiaShield.ready then return end
+	if ArachnaphobiaShield.OnEnterWorld() then return end
+	ArachnaphobiaShield.retries = (ArachnaphobiaShield.retries or 0) + 1
+	if ArachnaphobiaShield.retries >= 20 then return end
 	if C_Timer and C_Timer.After then
-		C_Timer.After(0.5, SBeGone.RetryEnterWorld)
+		C_Timer.After(0.5, ArachnaphobiaShield.RetryEnterWorld)
 	end
 end
 
 local function EnsureEventFrame()
-	if SBeGone.eventFrame then return end
+	if ArachnaphobiaShield.eventFrame then return end
 	local f = CreateFrame("Frame")
-	-- SBG6-confirmed events only (RegisterEvent errors on unknown names)
+	-- AS6-confirmed events only (RegisterEvent errors on unknown names)
 	f:RegisterEvent("PLAYER_ENTERING_WORLD")
 	f:RegisterEvent("VARIABLES_LOADED")
 	-- Optional on the earlier probed build; supported by current Forever docs.
@@ -659,7 +684,7 @@ local function EnsureEventFrame()
 		return legacy
 	end
 	f:SetScript("OnEvent", function(_, evt, unitArg)
-		-- SBG10: this client's native SetScript calls handlers with NO
+		-- AS10: this client's native SetScript calls handlers with NO
 		-- arguments — event data arrives via the `this`/`event`/`arg1`..
 		-- globals (proven by Spoken's Compat.lua override). `evt` covers
 		-- modern-style clients; the bare global covers this one. A
@@ -667,35 +692,35 @@ local function EnsureEventFrame()
 		local ev = evt or event
 		local payload = readablePayload(unitArg, arg1)
 		if ev == "VARIABLES_LOADED" then
-			SBeGone.sawVariablesLoaded = true
-			SBeGone.RetryEnterWorld()
+			ArachnaphobiaShield.sawVariablesLoaded = true
+			ArachnaphobiaShield.RetryEnterWorld()
 		elseif ev == "PLAYER_ENTERING_WORLD" then
-			SBeGone.DeathWarning.Clear()
-			SBeGone.RetryEnterWorld()
+			ArachnaphobiaShield.DeathWarning.Clear()
+			ArachnaphobiaShield.RetryEnterWorld()
 		elseif ev == "NAME_PLATE_UNIT_REMOVED" then
 			local unit = payload
 			if A.CanRead(unit) and type(unit) == "string" then
-				SBeGone.DeathWarning.CheckUnit(unit)
-				SBeGone.DeathWarning.ForgetToken(unit)
-				local slot = SBeGone.track[unit]
-				if slot then SBeGone.Cover.Release(slot); dropTrack(unit) end
+				ArachnaphobiaShield.DeathWarning.CheckUnit(unit)
+				ArachnaphobiaShield.DeathWarning.ForgetToken(unit)
+				local slot = ArachnaphobiaShield.track[unit]
+				if slot then ArachnaphobiaShield.Cover.Release(slot); dropTrack(unit) end
 			end
-		elseif ev == "NAME_PLATE_UNIT_ADDED" and SBeGone.ready
-			and SBeGoneSettings.enabled and not SBeGone.hidden then
-			SBeGone.Refresh()
+		elseif ev == "NAME_PLATE_UNIT_ADDED" and ArachnaphobiaShield.ready
+			and ArachnaphobiaShieldSettings.enabled and not ArachnaphobiaShield.hidden then
+			ArachnaphobiaShield.Refresh()
 		elseif ev == "UNIT_HEALTH" or ev == "UNIT_FLAGS" then
-			SBeGone.DeathWarning.CheckUnit(payload)
+			ArachnaphobiaShield.DeathWarning.CheckUnit(payload)
 		elseif ev == "UNIT_DIED" then
-			SBeGone.DeathWarning.OnDeath(payload)
+			ArachnaphobiaShield.DeathWarning.OnDeath(payload)
 		end
 	end)
-	SBeGone.eventFrame = f
+	ArachnaphobiaShield.eventFrame = f
 end
 EnsureEventFrame()
 
 -- If we load already in-world (e.g. /reload in character) AND the settings
 -- were already applied at script load, enter now. Otherwise PLAYER_ENTERING_WORLD
 -- and VARIABLES_LOADED above cover it, ensuring migration sees the real save.
-if UnitName and UnitName("player") and SBeGone.loadSnapshot.settingsPresent then
-	SBeGone.OnEnterWorld()
+if UnitName and UnitName("player") and ArachnaphobiaShield.loadSnapshot.settingsPresent then
+	ArachnaphobiaShield.OnEnterWorld()
 end

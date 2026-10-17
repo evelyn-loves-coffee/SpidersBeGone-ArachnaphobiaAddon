@@ -1,10 +1,10 @@
 ## Interface: 16001
-## Title: Spiders Be Gone
+## Title: Arachnaphobia Shield
 ## Notes: UI-layer spider covers for arachnophobia (WoW Forever 1.60.1)
-## Version: 0.3.3
+## Version: 0.3.8
 ## Author: evelyn-loves-coffee
-## IconTexture: Interface\AddOns\SpidersBeGone\icon.tga
-## SavedVariables: SBeGoneSettings
+## IconTexture: Interface\AddOns\ArachnaphobiaShield\icon.tga
+## SavedVariables: ArachnaphobiaShieldSettings
 SpiderDB.lua
 Access.lua
 Units.lua

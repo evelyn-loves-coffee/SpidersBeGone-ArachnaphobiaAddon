@@ -2,7 +2,7 @@
 """Generates the original addon icon without overwriting the supplied cover.
 
 Outputs (relative to the repo root):
-  SpidersBeGone/icon.tga   32x32 24-bit TGA - "no spider" addon icon
+  ArachnaphobiaShield/icon.tga   32x32 24-bit TGA - "no spider" addon icon
   docs/art/icon_preview.png    scaled preview of the icon
 
 The fox cover is converted separately by tools/import_cover.py.
@@ -154,13 +154,13 @@ def upscale(rows, k):
 
 def main():
     os.makedirs(os.path.join(ROOT, "docs", "art"), exist_ok=True)
-    os.makedirs(os.path.join(ROOT, "SpidersBeGone"), exist_ok=True)
+    os.makedirs(os.path.join(ROOT, "ArachnaphobiaShield"), exist_ok=True)
 
     icon = [[icon_pixel(i, j) for i in range(32)] for j in range(32)]
-    write_tga(os.path.join(ROOT, "SpidersBeGone", "icon.tga"), 32, 32, icon, 24)
+    write_tga(os.path.join(ROOT, "ArachnaphobiaShield", "icon.tga"), 32, 32, icon, 24)
     write_png(os.path.join(ROOT, "docs", "art", "icon_preview.png"), 32 * 8, 32 * 8, upscale(icon, 8))
 
-    print("wrote SpidersBeGone/icon.tga and docs/art/icon_preview.png; cover unchanged")
+    print("wrote ArachnaphobiaShield/icon.tga and docs/art/icon_preview.png; cover unchanged")
 
 
 if __name__ == "__main__":

@@ -1,17 +1,17 @@
 -- Public API boundary. Unavailable/secret values mean unavailable coverage;
 -- they are never converted, compared, or recovered through another channel.
-SBeGone = SBeGone or {}
+ArachnaphobiaShield = ArachnaphobiaShield or {}
 local A = {}
-SBeGone.Access = A
+ArachnaphobiaShield.Access = A
 
 function A.CanRead(value)
 	if type(issecretvalue) == "function" then
 		local ok, secret = pcall(issecretvalue, value)
-		if not ok or secret then SBeGone.coverageLimited = true; return false end
+		if not ok or secret then ArachnaphobiaShield.coverageLimited = true; return false end
 	end
 	if type(canaccessvalue) == "function" then
 		local ok, accessible = pcall(canaccessvalue, value)
-		if not ok or not accessible then SBeGone.coverageLimited = true; return false end
+		if not ok or not accessible then ArachnaphobiaShield.coverageLimited = true; return false end
 	end
 	return true
 end
@@ -32,7 +32,7 @@ function A.UnitReadable(unit)
 	local query = C_Secrets and C_Secrets.ShouldUnitIdentityBeSecret
 	if type(query) == "function" then
 		local secret, _, ok = A.Query(query, unit)
-		if not ok or secret ~= false then SBeGone.coverageLimited = true; return false end
+		if not ok or secret ~= false then ArachnaphobiaShield.coverageLimited = true; return false end
 	end
 	return true
 end
@@ -45,7 +45,7 @@ function A.FrameUsable(frame)
 	if not readable then return false end
 	if type(method) == "function" then
 		local forbidden, _, ok = A.Query(method, frame)
-		if not ok or forbidden ~= false then SBeGone.coverageLimited = true; return false end
+		if not ok or forbidden ~= false then ArachnaphobiaShield.coverageLimited = true; return false end
 	end
 	return true
 end

@@ -2,7 +2,7 @@
 
 # API verification record — WoW Forever 1.60.1
 
-M1 exit criteria. Compiled 2026-10-13 from in-client probe rounds SBG1–SBG4
+M1 exit criteria. Compiled 2026-10-13 from in-client probe rounds AS1–AS4
 (full probe lines in [PLAN.md §12](PLAN.md#12-m1-in-client-verification-scripts))
 and the Warcraft Wiki per-client API table
 (`warcraft.wiki.gg/wiki/World_of_Warcraft_API/Classic`, current as of
@@ -12,13 +12,13 @@ and the Warcraft Wiki per-client API table
 
 | Fact | Value | Source |
 |---|---|---|
-| Build | `GetBuildInfo()` → `"1.60.1"`, `"70374"`, `"Oct 12 2026"`, `"16001"` (four strings, modern signature) | SBG2 |
-| **TOC interface number** | **16001** (4th `GetBuildInfo()` value; matches `Spoken_Books.toc` listing `16001`) | SBG2 |
-| Lua | **5.1** (`_VERSION` = "Lua 5.1"; `math.huge` present; `table.unpack`/`table.pack` absent; global `unpack` present) | SBG2 |
-| Locale | `enUS` | SBG2 |
-| Codebase generation | **Modern** (post-3.0 layout: `Interface/AddOns/Blizzard_ChatFrameBase/Shared/SlashCommands.lua` in error stack) with a **reduced** API set | SBG1 error stack |
-| Screen | `GetEffectiveScreenInfo()` → 1772.3 × 1181.5 (UI-scaled) | SBG4 |
-| Camera (moot, 3D path closed) | `GetCameraZoom()` = 30; `GetCameraFOVDefaults()` = 90, 50, 90 | SBG4 |
+| Build | `GetBuildInfo()` → `"1.60.1"`, `"70374"`, `"Oct 12 2026"`, `"16001"` (four strings, modern signature) | AS2 |
+| **TOC interface number** | **16001** (4th `GetBuildInfo()` value; matches `Spoken_Books.toc` listing `16001`) | AS2 |
+| Lua | **5.1** (`_VERSION` = "Lua 5.1"; `math.huge` present; `table.unpack`/`table.pack` absent; global `unpack` present) | AS2 |
+| Locale | `enUS` | AS2 |
+| Codebase generation | **Modern** (post-3.0 layout: `Interface/AddOns/Blizzard_ChatFrameBase/Shared/SlashCommands.lua` in error stack) with a **reduced** API set | AS1 error stack |
+| Screen | `GetEffectiveScreenInfo()` → 1772.3 × 1181.5 (UI-scaled) | AS4 |
+| Camera (moot, 3D path closed) | `GetCameraZoom()` = 30; `GetCameraFOVDefaults()` = 90, 50, 90 | AS4 |
 
 ## Confirmed PRESENT (in-client, this build)
 
@@ -31,7 +31,7 @@ z=0, map=0), `C_Timer`, `C_Map` (partial — no `PositionToScreen`),
 `GetCameraFOVDefaults`, `GetUICameraInfo` (call untested — probe had a syntax
 error, irrelevant now).
 
-Confirmed in-client 2026-10-13 (SBG5): `GetCursorPosition` (returned
+Confirmed in-client 2026-10-13 (AS5): `GetCursorPosition` (returned
 206,409), `UnitClass` (→ "Warrior"), `UnitFactionGroup` (→ "Horde"),
 `PlaySoundFile`, the **`mouseover` unit token** end-to-end ("Young Night
 Web Spider", family ("Spider",3), `UnitIsVisible` true, `UnitIsDead` tracks
@@ -51,14 +51,14 @@ default-UI globals `MouseOverInfoFrame`, `PartyFrame1`, `MainMenuBar` (so:
 no party-frame covers; screen placement uses `UIParent` +
 `GetEffectiveScreenInfo`).
 
-## Confirmed PRESENT — frame events (SBG6, 2026-10-13)
+## Confirmed PRESENT — frame events (AS6, 2026-10-13)
 
 `UNIT_TARGET`, `PLAYER_ENTERING_WORLD`, `ZONE_CHANGED_NEW_AREA`,
 `VARIABLES_LOADED`, `UNIT_AURA`, `PLAYER_LOGIN` (pcall `RegisterEvent` — the
 client *errors* on unknown events, so only these may be registered, or every
 registration must be pcall-guarded).
 
-**Absent events (SBG6):** `MOUSEOVER`, `UPDATE`, `KEY_DOWN`, `KEY_UP`,
+**Absent events (AS6):** `MOUSEOVER`, `UPDATE`, `KEY_DOWN`, `KEY_UP`,
 `PARTY_UPDATE`, `RAID_UPDATE`, `CHAT_COMMAND`, `ACTIONBAR_BUTTON_UP`.
 
 ## Confirmed DEAD ENDS (tested)
@@ -70,7 +70,7 @@ registration must be pcall-guarded).
   spiders). → **3D-follow cover is infeasible on this client; UI-anchored
   design is final (PLAN.md §3.0).** `C_Map.ScreenToPosition` also absent.
 
-## Textures (SBG8, 2026-10-14 — in-game error + Spoken source)
+## Textures (AS8, 2026-10-14 — in-game error + Spoken source)
 
 - **Native `CreateTexture` is not the classic one.** Usage string:
   `local texture = self:CreateTexture(params)`. The classic call
@@ -100,7 +100,7 @@ registration must be pcall-guarded).
   fills the entire frame and is created first; the opaque full-color fox
   texture is drawn over it with neutral white tint. Both remain fully opaque.
 
-## Frames (SBG9, 2026-10-14 — in-game error + Spoken source)
+## Frames (AS9, 2026-10-14 — in-game error + Spoken source)
 
 - **`SetClampRect` is ABSENT** (in-game "Cover.lua:82: attempt to call a
   nil value" — zero hits in the working Spoken addon). Covers are kept
@@ -118,7 +118,7 @@ registration must be pcall-guarded).
   `SetPoint`, `GetPoint`, `IsShown`, `Show`/`Hide`, `SetScript`,
   `RegisterEvent`.
 
-## Scripts (SBG10, 2026-10-14 — Spoken source)
+## Scripts (AS10, 2026-10-14 — Spoken source)
 
 - **Native `SetScript` calls handlers with NO arguments.** Event data
   arrives via the globals `this`, `event`, `arg1`..`arg9` — proven by
@@ -130,16 +130,16 @@ registration must be pcall-guarded).
 - Our OnEvent handler uses `local ev = evt or event` (modern argument
   first, then the old-style global) so it works under either convention.
 
-## Chat text (SBG11, 2026-10-14 — observed in-game)
+## Chat text (AS11, 2026-10-14 — observed in-game)
 
 - **Never print `|` + letter in chat**: the client's chat filter eats
   chat-control sequences. `/spider help` printed
   `on|off|toggle|clear|help` and the chat displayed
   `on|offoggle|cleareIp` — `|t` and `|h` were consumed as control
-  sequences. Our chat output uses ` / ` separators instead; `SBG| ` and
+  sequences. Our chat output uses ` / ` separators instead; `AS| ` and
   ` | ` (pipe with surrounding spaces) are observed safe.
 
-## Frames, display pass & GetPoint (SBG12, 2026-10-15 — observed in-game)
+## Frames, display pass & GetPoint (AS12, 2026-10-15 — observed in-game)
 
 - **`Show()` is deferred to the next display pass.** In-game: first run
   allocated 8 parks, `IsShown()` was still false when we saved
@@ -179,13 +179,13 @@ registration must be pcall-guarded).
    build.
 6. **`UnitCanAttack` is two-arg on this client**: `UnitCanAttack(unit,
    target)` — use `UnitCanAttack("player", unit)` for "hostile to me".
-7. **Events are mapped (SBG6, 2026-10-13):** present = `UNIT_TARGET`,
+7. **Events are mapped (AS6, 2026-10-13):** present = `UNIT_TARGET`,
    `PLAYER_ENTERING_WORLD`, `ZONE_CHANGED_NEW_AREA`, `VARIABLES_LOADED`,
    `UNIT_AURA`, `PLAYER_LOGIN`; absent = `MOUSEOVER`, `UPDATE`, `KEY_DOWN`,
    `KEY_UP`, `PARTY_UPDATE`, `RAID_UPDATE`, `CHAT_COMMAND`,
    `ACTIONBAR_BUTTON_UP`. Hover detection must **poll** the `mouseover`
    token; the driver must not rely on `RegisterEvent("UPDATE")` (PLAN.md
-   §3.4, SBG7 §12.10).
+   §3.4, AS7 §12.10).
 8. Panic hotkey: `KEY_DOWN` absent → mechanism is **`Bindings.xml`**
    (Spoken pattern, listed in our TOC) with modifier-key polling as
    fallback; `/spider hide` is the guaranteed fallback (PLAN.md §4.5).
@@ -196,6 +196,6 @@ registration must be pcall-guarded).
 - `/spider` → prints both selftest lines (two-part slash registration
   verified working in-game: `SLASH_SPIDER1 = "/spider"` +
   `SlashCmdList["SPIDER"]`).
-- `/run print(SBeGone and SBeGone.version or "NOT LOADED")` → `0.1.0`.
+- `/run print(ArachnaphobiaShield and ArachnaphobiaShield.version or "NOT LOADED")` → `0.1.0`.
 - **M2 complete.** Next: M3 (sticky hover shield + parkable shields, pure
   implementation — every API it needs is verified above).

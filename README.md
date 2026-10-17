@@ -1,13 +1,25 @@
-# Spiders Be Gone — Arachnaphobia Addon
+# Arachnaphobia Shield — Arachnaphobia Addon
 
 Addon for **World of Warcraft Forever** (classic 1.x-line client, v1.60.1) that
 covers spider models with a nameplate-attached UI element. UI-layer only: no model
 swaps, no game-file modification.
 
-**Status: v0.3.3 — core tracking verified in game 2026-10-16 (Tirisfal);
-automatic nameplate covers, image choices and a bounded 80-100% opacity
-slider. The fox, simple backgrounds, custom images and brief corpse warning remain. The new build passes offline
-checks; live validation belongs on the partner's test machine.**
+**Status: v0.3.8 — opacity retired, fox camo card, strict custom path; live
+validation belongs on the partner's test machine.** v0.3.8 removes the
+opacity control entirely: this client fades nameplates (and their children,
+i.e. the covers) with distance no matter what the addon sets, so the setting
+could never do what it promised. Covers are always fully opaque. The fox now
+sits on a navy-toned **camouflage** squircle card instead of a flat navy one,
+custom images must live under `Interface\AddOns\ArachnaphobiaShield\Custom\`
+(legacy `MyCovers` paths fall back to the fox), and the release zip builds
+into the git-ignored `dist/` folder instead of the repository's parent
+directory. v0.3.7 replaces the flat preset fills with three-tone camouflage
+patterns (domain-warped fractal noise plus grain) so a spider outline is
+harder to trace through the client's distance fade, and places the fox on a
+navy squircle card so its open areas are backing instead of holes. The fox,
+camouflage backgrounds, custom images and brief corpse warning remain. Core
+tracking was verified in game 2026-10-16 (Tirisfal); the build passes offline
+checks.
 Tracked covers are now **children of the spider's nameplate**, so native
 movement and scale apply to the cover and its offset between polling ticks.
 The public unit-to-nameplate mapper is preferred; a metadata fallback requires
@@ -28,30 +40,32 @@ Only the image picker accepts input when you explicitly open it.
 
 See [docs/HANDOFF.md](docs/HANDOFF.md) to resume from a fresh session,
 [docs/TRACKING-ONLY.md](docs/TRACKING-ONLY.md) for current controls, and
-[historical design](https://github.com/evelyn-loves-coffee/SpidersBeGone-ArachnaphobiaAddon/blob/main/docs/PLAN.md) / [client-probe records](https://github.com/evelyn-loves-coffee/SpidersBeGone-ArachnaphobiaAddon/blob/main/docs/API-VERIFICATION.md)
+[historical design](https://github.com/evelyn-loves-coffee/ArachnaphobiaShield/blob/main/docs/PLAN.md) / [client-probe records](https://github.com/evelyn-loves-coffee/ArachnaphobiaShield/blob/main/docs/API-VERIFICATION.md)
 for the historical design and client-probe records.
 
 ## Install
 
-Extract the fixed ZIP and replace the `SpidersBeGone/` folder in your client's
+Extract the fixed ZIP and replace the `ArachnaphobiaShield/` folder in your client's
 `Interface/AddOns/` directory, then log in or `/reload`. The `.toc` must be at
-`Interface/AddOns/SpidersBeGone/SpidersBeGone.toc`, without an extra nested
-repository folder. `/sbg` should report **v0.3.3**.
+`Interface/AddOns/ArachnaphobiaShield/ArachnaphobiaShield.toc`, without an extra nested
+repository folder. `/as` should report **v0.3.8**.
 
-Choose your cover with **`/sbg config`**. The default is the supplied fox
-illustration; alternatives are muted red, blue and sage squircles, plain
-charcoal, or your own local image. Choices update existing covers immediately
-and save automatically. The picker also has an **opacity slider from 80% to
-100%**, in 1% steps, defaulting to fully opaque. Its preview updates immediately;
-lower opacity lets some of the scene show through. Artwork keeps its original colors. See [the image guide](docs/COVER-IMAGES.md) for previews, commands
+Choose your cover with **`/as config`**. The default is the supplied fox
+illustration on a navy-toned camouflage squircle card; alternatives are
+camouflage red, blue, sage and charcoal squircles, or your own local image.
+Choices update existing covers immediately and save automatically. Covers
+are always fully opaque (v0.3.8 removed the opacity control: the client
+fades them at distance regardless, so the setting could not do what it
+promised). The preview updates immediately; artwork keeps its original
+colors. See [the image guide](docs/COVER-IMAGES.md) for previews, commands
 and custom-image preparation. Tracking stays click-through and requires no
 mouseover; the 1.75-second corpse warning is unchanged.
 
 Enable enemy nameplates in the game. The addon starts enabled on a new install;
-`/sbg enable` also enables tracking immediately and retries paused coverage.
-`/sbg disable` stops tracking and hides every cover.
-No mouseover or separate auto command is needed. Tune coverage with `/sbg grow 2`
-and `/sbg drop 0.5` as needed.
+`/as enable` also enables tracking immediately and retries paused coverage.
+`/as disable` stops tracking and hides every cover.
+No mouseover or separate auto command is needed. Tune coverage with `/as grow 2`
+and `/as drop 0.5` as needed.
 
 The cover follows the visible nameplate. Stacking or screen-edge clamping by
 the game can move a nameplate away from the model; this client exposes no usable
@@ -63,10 +77,10 @@ band while the model keeps growing as the camera approaches, so a
 plate-proportional cover under-covers close spiders (legs showing). True
 camera distance is unmeasurable on this client (every position API is
 absent), so the boost is not graded by distance: when a plate's apparent
-width reaches `/sbg near`'s threshold, its cover is multiplied by the
-near-field boost (default `2.6`). Calibrate once: `/sbg debug on`, walk
-from far to close at a spider, read the `SBG| near:` line, then
-`/sbg near <N>` (default `0` = off).
+width reaches `/as near`'s threshold, its cover is multiplied by the
+near-field boost (default `2.6`). Calibrate once: `/as debug on`, walk
+from far to close at a spider, read the `AS| near:` line, then
+`/as near <N>` (default `0` = off).
 
 **Known limitation:** when the camera is very close, the client clamps the
 nameplate itself (edge/stacking), the cover follows the plate, and no
@@ -80,20 +94,20 @@ cover or track the body. Deaths not observed through accessible unit data or
 a recent readable death event can be missed. NoSpider uses a mouseover warning
 for this case; see [docs/CORPSE-HANDLING.md](docs/CORPSE-HANDLING.md) for our
 automatic implementation and its limits.
-`/sbg` reports `limited=true` when a checked value/frame is inaccessible,
-and `paused=true` after repeated failures. `/sbg enable` explicitly retries
+`/as` reports `limited=true` when a checked value/frame is inaccessible,
+and `paused=true` after repeated failures. `/as enable` explicitly retries
 automatic covers. See [docs/TRACKING-ONLY.md](docs/TRACKING-ONLY.md) for controls
-and upgrade behavior, and [the native attachment record](https://github.com/evelyn-loves-coffee/SpidersBeGone-ArachnaphobiaAddon/blob/main/docs/NATIVE-OVERLAYS.md) for
+and upgrade behavior, and [the native attachment record](https://github.com/evelyn-loves-coffee/ArachnaphobiaShield/blob/main/docs/NATIVE-OVERLAYS.md) for
 the native attachment implementation.
 
-`/sbg disable` also dismisses the corpse warning and clears its observation
+`/as disable` also dismisses the corpse warning and clears its observation
 history. The timer and subsequent deaths cannot redisplay it while disabled.
 `corpsePopup=unavailable` in diagnostics means the popup text API failed; a chat
 warning is used instead so tracking can continue.
 
 ## NoSpider inspiration and Classic data
 
-Spiders Be Gone is an independent **spiritual successor to the accessibility
+Arachnaphobia Shield is an independent **spiritual successor to the accessibility
 approach** of [NoSpider - Arachnophobia Mode](https://www.curseforge.com/wow/addons/nospider-arachnophobia-mode)
 by **GrasHopper42**, whose author lists the project under the
 [MIT License](https://www.curseforge.com/wow/addons/nospider-arachnophobia-mode/license).
@@ -128,30 +142,31 @@ review and Classic filtering rules are in [docs/DATA-SOURCES.md](docs/DATA-SOURC
 
 | Command | Effect |
 | :-- | :-- |
-| `/sbg` | diagnostics: version, build, enabled, tracking, covers shown, limited / paused |
-| `/sbg config` | open the cover picker with preview, presets and custom-image path |
-| `/sbg opacity [0.8-1]` | report or set bounded cover opacity; also available in the picker |
-| `/sbg cover <choice>` | select `fox`, `red`, `blue`, `sage`, `charcoal`, or `custom <local .tga path>` |
-| `/sbg enable` | enable tracking and retry paused coverage; enabled by default |
-| `/sbg disable` | stop tracking and hide every cover; stays disabled after reload |
-| `/sbg toggle` | switch between enabled tracking and disabled covers |
-| `/sbg grow [N]` | how much bigger than the nameplate a cover is (`0.2`–`6`, default `1.6`) |
-| `/sbg drop [N]` | how far below the nameplate it sits (`0`–`4`, default `0.5` — calibrated in game 2026-10-16) |
-| `/sbg near [N]` | near-field boost: plate apparent width (`UI` px) at/above which the tracked cover gets the ×`2.6` boost (`0`–`1000`, default `0` = off) |
-| `/sbg size [N]` | fallback cover size in UI units (`16`–`512`) when plate geometry is unavailable |
-| `/sbg name <name>` | "cover this one too": add an **exact** creature name (spaces allowed) |
-| `/sbg names` | list the names you added |
-| `/sbg forget <name>` | remove one you added |
-| `/sbg debug [on\|off]` | verbose decisions for bug reports (off by default) |
-| `/sbg help` | usage |
+| `/as` | diagnostics: version, build, enabled, tracking, covers shown, limited / paused |
+| `/as config` | open the cover picker with preview, presets and custom-image path |
+| `/as cover <choice>` | select `fox`, `red`, `blue`, `sage`, `charcoal`, or `custom <local .tga path>` |
+| `/as enable` | enable tracking and retry paused coverage; enabled by default |
+| `/as disable` | stop tracking and hide every cover; stays disabled after reload |
+| `/as toggle` | switch between enabled tracking and disabled covers |
+| `/as grow [N]` | how much bigger than the nameplate a cover is (`0.2`–`6`, default `1.6`) |
+| `/as drop [N]` | how far below the nameplate it sits (`0`–`4`, default `0.5` — calibrated in game 2026-10-16) |
+| `/as near [N]` | near-field boost: plate apparent width (`UI` px) at/above which the tracked cover gets the ×`2.6` boost (`0`–`1000`, default `0` = off) |
+| `/as size [N]` | fallback cover size in UI units (`16`–`512`) when plate geometry is unavailable |
+| `/as name <name>` | "cover this one too": add an **exact** creature name (spaces allowed) |
+| `/as names` | list the names you added |
+| `/as forget <name>` | remove one you added |
+| `/as debug [on\|off]` | verbose decisions for bug reports (off by default) |
+| `/as help` | usage |
 
-`/sbg on` and `/sbg off` remain compatibility aliases for enable/disable.
+`/as on` and `/as off` remain compatibility aliases for enable/disable.
 
 **Upgrade from before v0.3.1:** old screen-cover layouts and editing modes are deleted
 for every character, including settings loaded late by the client. The
-selected image, custom path, enabled preference, opacity and tracking calibration are
-preserved. Cover positions are never saved; covers are rebuilt from live
-nameplates. The removed layout/reset commands are no longer accepted.
+selected image, custom path, enabled preference and tracking calibration are
+preserved; the retired opacity setting and legacy `MyCovers` custom paths are
+dropped on load (such a selection falls back to the fox). Cover positions are
+never saved; covers are rebuilt from live nameplates. The removed
+layout/reset/opacity commands are no longer accepted.
 
 **Primary in-game test machine:** the user's partner's computer
 (`evelyn-loves-coffee`). This development checkout does not establish that
@@ -163,7 +178,7 @@ confirmation there.
 
 ### How a spider is recognised
 
-1. **Creature ID** against a curated database (`SpidersBeGone/SpiderDB.lua`,
+1. **Creature ID** against a curated database (`ArachnaphobiaShield/SpiderDB.lua`,
    124 spider and spider-looking creature IDs compiled by the owner, with their
    home zones) — exact, and the only thing that catches names that give nothing
    away ("Moss Stalker", "Crypt Horror", "Krethis Shadowspinner") or the
@@ -173,15 +188,71 @@ confirmation there.
 3. **Name fragments** (`spider`, `weaver`, `widow`, `skitter`, `tarantula`, …,
    case-insensitive) — last resort for units that report neither.
 
-Spotted a spider that none of the three caught? `/sbg name <exact name>` adds
-it permanently (per character, saved in SavedVariables); `/sbg names` and
-`/sbg forget <name>` manage the list. Extra fragments can be added in
-`SBeGoneSettings.namePatterns` — those are *added to* the built-in set, never a
+Spotted a spider that none of the three caught? `/as name <exact name>` adds
+it permanently (per character, saved in SavedVariables); `/as names` and
+`/as forget <name>` manage the list. Extra fragments can be added in
+`ArachnaphobiaShieldSettings.namePatterns` — those are *added to* the built-in set, never a
 replacement.
 
 Player units are excluded. The level window (`minLevel`/`maxLevel`) and
 `requireHostile` still apply. Identification requires accessible unit data;
 the addon does not infer hidden identities from another source.
+
+## Custom cover images — setup and troubleshooting
+
+The picker has **no file browser and shows no directory listing, by design**:
+the addon never enumerates the game's filesystem. You type the exact path of
+a TGA that already sits inside the game folder.
+
+**1. Put the image in the addon's custom folder.** Create
+`Interface\AddOns\ArachnaphobiaShield\Custom\` and put a `.tga` file in it, e.g.
+`Interface\AddOns\ArachnaphobiaShield\Custom\flower.tga`. A plain 24-bit TGA
+always works; 32-bit RGBA TGA (with real transparency) works too. Square
+images look best — the image is scaled into the square cover box without
+cropping. The folder is git-ignored and never ships in the release zip;
+when updating the addon, extract the zip **over** the existing folder (or
+re-copy your images) so the folder survives.
+
+On the partner's test machine the AddOns folder is
+`.../World of Warcraft/_classic_beta_/Interface/AddOns/` (Wine prefix;
+`/home/evelyn/Apps/wow/AddOns` is a symlink to it). Copy the image into a
+subfolder of that directory.
+
+**2. Point the addon at it**, either way:
+- Picker: `/as config` → type the path in the *Custom image* field → click
+  **Use image** (or press Enter). The preview shows the image on a checker
+  before you commit; the status line confirms it.
+- Command: `/as cover custom Interface\AddOns\ArachnaphobiaShield\Custom\flower.tga`
+
+The path is **relative to the game root with backslashes** — no `C:` prefix.
+
+**3. If it does not work**, match the symptom:
+
+| Symptom | Cause / fix |
+| :-- | :-- |
+| Picker status: *“Image failed to load; showing the fox.”* | The client could not load the file. Check spelling, backslashes and that the file really is a TGA the client can decode. Test a known-good file first (e.g. `Interface\AddOns\ArachnaphobiaShield\cover.tga`). |
+| Picker rejects the path with an error | The path must be under `Interface\AddOns\ArachnaphobiaShield\Custom\`, end with `.tga`, contain no `..`, no double backslashes, no control characters, and be ≤ 240 characters. |
+| Preview looks right but the in-game cover shows the fox | The texture loaded in the picker but not at cover size/time. Retry after `/reload`; try a smaller 24-bit TGA. |
+| Transparent parts of your image show as navy, not the world | Intentional: a navy backing is drawn behind custom images so the cover keeps its minimum coverage floor. Only the bundled presets (which carry real corner transparency) let the world through the corners. |
+| Image is cropped / stretched | It is not cropped; non-square images get letterboxing inside the cover box. Use a square source. |
+
+**Notes on the bundled presets (since v0.3.7, fox camo since v0.3.8):**
+every preset (red, blue, sage, charcoal) is a 32-bit RGBA **camouflage
+squircle**: three organic tones of its color plus fine grain, with
+**transparent rounded corners** — the world shows through the corners only.
+The fox cover is the fox **on a navy-toned camouflage squircle card**: the
+open areas around the fox are solid camo backing, not transparency (v0.3.6
+cut them to holes and the result read as too see-through). The camouflage
+is deliberate: this client fades nameplates (and their children, i.e. the
+covers) with distance, and that fade cannot be disabled from the addon; a
+busy pattern makes a spider outline much harder to trace through the fade
+than a flat fill, and covers are always fully opaque (v0.3.8 removed the
+opacity control because it could not override the distance fade). If a
+client ever refuses a 32-bit file, the affected cover degrades to the navy
+backing (a plain square); a 24-bit fallback file can be shipped if that is
+ever observed. The picker window itself uses file-based background
+textures, so the config menu has a visible dark panel and button faces even
+on clients that silently ignore numeric `SetTexture(r, g, b, a)`.
 
 ## Developer notes
 
@@ -189,9 +260,24 @@ the addon does not infer hidden identities from another source.
   Lua 5.1, modern codebase with a reduced API set — see docs/PLAN.md §2).
 - All in-client probe rounds and their results are in docs/PLAN.md §12.
 - `tools/make_art.py` regenerates only the addon icon (stdlib only).
-- `tools/make_backgrounds.py` regenerates the four original simple backgrounds.
+- `tools/make_backgrounds.py` regenerates the four camouflage squircles
+  (32-bit RGBA, transparent corners; stable per-preset seeds, so the
+  patterns are fixed art), the four 8×8 picker UI textures
+  (`picker-bg/btn/btn-sel/field.tga`) and `cover-backdrop.tga` (the navy
+  floor drawn under unverified custom art).
 - `uv run --with pillow python tools/import_cover.py <local-image-path> --output <local-cover.tga>`
-  converts a local image without uploading it; see [COVER-IMAGES.md](docs/COVER-IMAGES.md).
+  converts a local image without uploading it; then run
+  `uv run --with pillow python tools/make_cover_alpha.py` to cut the
+  border-connected backing out of the result and place the art on the
+  navy-toned camouflage squircle card. The script is a pure function of the
+  original opaque import and refuses already-processed input (restore the
+  import with `git show HEAD:ArachnaphobiaShield/cover.tga` before regenerating).
+  `tools/render_config_preview.py` re-renders
+  [docs/art/config_preview.png](docs/art/config_preview.png); see
+  [COVER-IMAGES.md](docs/COVER-IMAGES.md).
+- `tools/package_addon.py` writes the release zip into the git-ignored
+  `dist/` folder (never into the repository's parent directory) and runs
+  the offline Lua regression suite against the extracted files.
 - Presets are data-driven in `Appearance.lua`; the picker is created only on request.
   Release packaging includes only explicitly listed bundled assets.
 

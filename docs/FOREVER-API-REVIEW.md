@@ -8,7 +8,7 @@ Historical audit of v0.2.4. Its implementation gaps are addressed in the
 Reviewed on October 15, 2026, at the user's request. This is a source and
 policy review, with no live game-client testing. NoSpider was inspected in
 place and left unchanged. No NoSpider code, artwork, libraries, or databases
-were copied into SpidersBeGone. The runtime addon and distributed v0.2.4 ZIP
+were copied into ArachnaphobiaShield. The runtime addon and distributed v0.2.4 ZIP
 are unchanged by this review.
 
 Recommendation: use an independently implemented, mouse-disabled overlay
@@ -22,7 +22,7 @@ patch, not a verified solution for every restricted area.
 - Supplied reference: `C:/Users/chipa/Downloads/NoSpider - v1.4.3/NoSpider`.
   Its TOC declares interface **20505**, a TBC Classic target. The TOC's own
   version field says 1.4.0 despite the archive's v1.4.3 name.
-- SpidersBeGone targets interface **16001**. Its older probe record names
+- ArachnaphobiaShield targets interface **16001**. Its older probe record names
   Forever **1.60.1 build 70374**; that record was not independently reproduced
   during this review.
 - The inspected Blizzard UI source mirror's `forever` branch resolves to
@@ -112,7 +112,7 @@ manual screen shield remains possible without identifying a restricted unit.
 
 ## Policy assessment and intended scope
 
-The inspected SpidersBeGone runtime draws addon-owned UI and queries unit
+The inspected ArachnaphobiaShield runtime draws addon-owned UI and queries unit
 information. It contains no movement/casting/targeting automation, native
 memory access, model/game-file patching, range-unlocking, or restriction bypass.
 It explicitly disables mouse input during tracking; arrange mode intentionally
@@ -168,10 +168,10 @@ Safe initial diagnostics, each under the repository's recorded 255-character
 chat-command limit, only report build/capability flags:
 
 ```lua
-/run print("SBG build:", GetBuildInfo())
-/run print("SBG mapper:", type(C_NamePlate and C_NamePlate.GetNamePlateForUnit))
-/run local f=C_Secrets and C_Secrets.HasSecretRestrictions; print("SBG secrets enabled:",f and f())
-/run local f=C_Secrets and C_Secrets.ShouldUnitIdentityBeSecret; print("SBG target identity secret:",f and f("target"))
+/run print("AS build:", GetBuildInfo())
+/run print("AS mapper:", type(C_NamePlate and C_NamePlate.GetNamePlateForUnit))
+/run local f=C_Secrets and C_Secrets.HasSecretRestrictions; print("AS secrets enabled:",f and f())
+/run local f=C_Secrets and C_Secrets.ShouldUnitIdentityBeSecret; print("AS target identity secret:",f and f("target"))
 ```
 
 ## License boundary
@@ -180,7 +180,7 @@ The NoSpider author's
 [project license page](https://www.curseforge.com/wow/addons/nospider-arachnophobia-mode/license)
 lists MIT and project ID 1485269, matching the supplied TOC. No top-level
 license notice was found in the supplied folder; bundled libraries contain
-their own licenses. SpidersBeGone has its own MIT LICENSE.
+their own licenses. ArachnaphobiaShield has its own MIT LICENSE.
 
 The chosen approach is independent implementation informed by API usage.
 If actual NoSpider code or substantial portions are reused later, preserve

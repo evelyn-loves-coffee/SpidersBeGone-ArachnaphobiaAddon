@@ -1,20 +1,22 @@
 -- Nameplate-only cover pool. Every cover is permanently click-through.
 -- Frames stay hidden until attached to an accessible native nameplate.
-SBeGone = SBeGone or {}
+ArachnaphobiaShield = ArachnaphobiaShield or {}
 
 local C = {}
-SBeGone.Cover = C
+ArachnaphobiaShield.Cover = C
 
 C.MAX = 24
-C.ART_PATH = "Interface\\AddOns\\SpidersBeGone\\cover.tga"
-C.BACKDROP = { 14 / 255, 19 / 255, 36 / 255 }
+C.ART_PATH = "Interface\\AddOns\\ArachnaphobiaShield\\cover.tga"
+-- The navy floor under unverified custom art ships as a TGA: on this client
+-- only the string-path SetTexture form works (numeric is a silent no-op).
+C.BACKDROP_PATH = "Interface\\AddOns\\ArachnaphobiaShield\\cover-backdrop.tga"
 
 C.pool = {}  -- [1..MAX] = nameplate-only frames; no saved screen positions
 C.free = {}  -- free slot indices
 
 -- This client's native CreateTexture is NOT the classic one. Its usage
 -- string is "self:CreateTexture(params)" and it rejects the classic
--- "BACKGROUND" layer (in-game error 2026-10-14, SBG8: "bad argument #3 to
+-- "BACKGROUND" layer (in-game error 2026-10-14, AS8: "bad argument #3 to
 -- 'CreateTexture'"), while the working Spoken addon on this client uses the
 -- (nil, "ARTWORK") form. So: try the proven layer first, pcall-guarded.
 local LAYER_CANDIDATES = { "ARTWORK", "ART", "BACKGROUND", "MEDIUM", "LOW", "HIGH", "HIGHLIGHT" }
@@ -59,7 +61,7 @@ function C.Init()
 end
 
 function C.Size()
-	local s = SBeGoneSettings
+	local s = ArachnaphobiaShieldSettings
 	return (type(s) == "table" and type(s.coverSize) == "number") and s.coverSize or 96
 end
 
@@ -76,35 +78,37 @@ end
 -- Some client builds return no value on success; only false or an error is
 -- a detectable failure. A syntactically valid missing file may still show a
 -- placeholder, so custom choices must be checked in the preview in game.
-function C.PaintArt(tex, path, opacity)
+-- Covers are always fully opaque (v0.3.8): the client fades them at distance
+-- regardless of vertex alpha, so the opacity preference no longer exists.
+function C.PaintArt(tex, path)
 	local ok, result = pcall(tex.SetTexture, tex, path)
 	local loaded = ok and result ~= false
 	if not loaded then pcall(tex.SetTexture, tex, C.ART_PATH) end
-	setTint(tex, 1, 1, 1, SBeGone.Appearance.ClampOpacity(opacity))
+	setTint(tex, 1, 1, 1, 1)
 	return loaded
 end
 
--- Shipped artwork already contains its opaque backing. Draw it once for
--- accurate opacity. Unverified custom images retain a backing too, ensuring
--- transparent pixels cannot reduce coverage below the configured floor.
-function C.PaintCover(base, art, preset, opacity)
-	opacity = SBeGone.Appearance.ClampOpacity(opacity)
-	local loaded = art and C.PaintArt(art, preset.path, opacity)
-	local baseAlpha = (loaded and preset.id ~= "custom") and 0 or opacity
+-- Shipped artwork already contains its opaque backing, so it draws as-is.
+-- Unverified custom art keeps the navy floor beneath it so transparent
+-- pixels cannot reveal the world. Hiding the floor is vertex alpha, the
+-- only texture-hiding mechanism proven on this client.
+function C.PaintCover(base, art, preset)
+	local loaded = art and C.PaintArt(art, preset.path)
 	local baseOK = true
 	if base then
-		local ok, result = pcall(base.SetTexture, base, C.BACKDROP[1], C.BACKDROP[2], C.BACKDROP[3], baseAlpha)
+		local ok, result = pcall(base.SetTexture, base, C.BACKDROP_PATH)
 		baseOK = ok and result ~= false
+		setTint(base, 1, 1, 1, (loaded and preset.id ~= "custom") and 0 or 1)
 	end
 	return loaded and baseOK
 end
 
 function C.ApplyStyle()
-	local preset, opacity = SBeGone.Appearance.Current(), SBeGone.Appearance.Opacity()
+	local preset = ArachnaphobiaShield.Appearance.Current()
 	C.textureFailed = false
 	for i = 1, C.MAX do
 		local slot = C.pool[i]
-		if not C.PaintCover(slot.base, slot.art, preset, opacity) then C.textureFailed = true end
+		if not C.PaintCover(slot.base, slot.art, preset) then C.textureFailed = true end
 	end
 end
 
@@ -138,7 +142,7 @@ function C.Detach(i)
 	if not slot then return false end
 	if not pcall(slot.frame.EnableMouse, slot.frame, false) then return false end
 	if not pcall(slot.frame.SetParent, slot.frame, UIParent) then
-		SBeGone.coverageLimited = true
+		ArachnaphobiaShield.coverageLimited = true
 		return false
 	end
 	if slot.frame.ClearAllPoints and not pcall(slot.frame.ClearAllPoints, slot.frame) then return false end
@@ -148,9 +152,9 @@ end
 
 -- Native parenting carries movement and perspective between polling ticks.
 function C.PlaceTracked(i, plate, dropY)
-	if not SBeGoneSettings.enabled or SBeGone.hidden then return false end
+	if not ArachnaphobiaShieldSettings.enabled or ArachnaphobiaShield.hidden then return false end
 	local slot = C.pool[i]
-	if not slot or not slot.allocated or slot.pendingRelease or not SBeGone.Access.FrameUsable(plate) or not slot.frame.SetPoint then return false end
+	if not slot or not slot.allocated or slot.pendingRelease or not ArachnaphobiaShield.Access.FrameUsable(plate) or not slot.frame.SetPoint then return false end
 	local mouseOK = pcall(slot.frame.EnableMouse, slot.frame, false)
 	if not mouseOK then return false end
 	dropY = dropY or 0
@@ -260,7 +264,7 @@ function C.ShownCount()
 	if not C.inited then return 0 end
 	local n = 0
 	for _, slot in ipairs(C.pool) do
-		if SBeGone.Access.Query(slot.frame.IsShown, slot.frame) == true then n = n + 1 end
+		if ArachnaphobiaShield.Access.Query(slot.frame.IsShown, slot.frame) == true then n = n + 1 end
 	end
 	return n
 end

@@ -1,10 +1,10 @@
--- Spiders Be Gone — Units.lua: the single spider predicate (M3).
+-- Arachnaphobia Shield — Units.lua: the single spider predicate (M3).
 -- Every "is this unit a spider?" decision goes through U.IsSpider.
-SBeGone = SBeGone or {}
+ArachnaphobiaShield = ArachnaphobiaShield or {}
 
 local U = {}
-SBeGone.Units = U
-local A = SBeGone.Access
+ArachnaphobiaShield.Units = U
+local A = ArachnaphobiaShield.Access
 
 -- Fragments carried over from the pre-database releases, kept as a UNION with
 -- the owner's list so upgrading never loses coverage of something an older
@@ -21,7 +21,7 @@ U.NAME_PATTERNS = { "Gloomweaver" }
 -- rebuilt only when the user list changes length.
 local patCache, patStamp
 local function namePatterns()
-	local s = SBeGoneSettings or {}
+	local s = ArachnaphobiaShieldSettings or {}
 	local user = (type(s.namePatterns) == "table") and s.namePatterns or {}
 	if patCache and patStamp == #user then return patCache end
 	local out, seen = {}, {}
@@ -35,7 +35,7 @@ local function namePatterns()
 	end
 	-- Owner's curated fragments first, then the pre-database ones, then
 	-- whatever the user added (an absent/empty DB still matches "Gloomweaver").
-	for _, pat in ipairs((SBeGone.DB and SBeGone.DB.patterns) or {}) do add(pat) end
+	for _, pat in ipairs((ArachnaphobiaShield.DB and ArachnaphobiaShield.DB.patterns) or {}) do add(pat) end
 	for _, pat in ipairs(U.NAME_PATTERNS) do add(pat) end
 	for _, pat in ipairs(user) do add(pat) end
 	patCache, patStamp = out, #user
@@ -44,11 +44,11 @@ end
 
 -- Spider predicate (PLAN §3.1). `unit` is a tracked unit token.
 function U.IsSpider(unit)
-	local s = SBeGoneSettings or {}
+	local s = ArachnaphobiaShieldSettings or {}
 	if not A.UnitReadable(unit) then return false end
 
 	-- 1. Never cover players.
-	--    SBG14 (in-game 2026-10-15, probe P3): UnitClass on this client
+	--    AS14 (in-game 2026-10-15, probe P3): UnitClass on this client
 	--    returns the unit's NAME for non-player units — hovering the test
 	--    spider reported class="Young Night Web Spider". The old "UnitClass is
 	--    non-nil => player" guard therefore rejected EVERY spider (P4:
@@ -76,7 +76,7 @@ function U.IsSpider(unit)
 	--    (in-game 2026-10-15: id=1504); on nameplate tokens it is probed in
 	--    the next round, and a nil here simply falls through to family.
 	local isSpider = false
-	local db = SBeGone.DB and SBeGone.DB.ids
+	local db = ArachnaphobiaShield.DB and ArachnaphobiaShield.DB.ids
 	if db and UnitCreatureID then
 		local id = A.Query(UnitCreatureID, unit)
 		if type(id) == "number" and db[id] == true then
@@ -85,7 +85,7 @@ function U.IsSpider(unit)
 	end
 
 	-- 3. Primary for unlisted units: creature family "Spider" (id 3) —
-	--    confirmed in-client (SBG4) and on nameplate tokens (NP1, 2026-10-15).
+	--    confirmed in-client (AS4) and on nameplate tokens (NP1, 2026-10-15).
 	if UnitCreatureFamily then
 		local _, famId = A.Query(UnitCreatureFamily, unit)
 		if famId == 3 then
@@ -138,7 +138,7 @@ function U.IsSpider(unit)
 	end
 
 	-- 6. Optional hostile-only gate. UnitCanAttack is TWO-ARG on this client
-	--    (SBG5): UnitCanAttack("player", unit) = "can I attack it".
+	--    (AS5): UnitCanAttack("player", unit) = "can I attack it".
 	if s.requireHostile then
 		if A.Query(UnitCanAttack, "player", unit) ~= true then
 			return false

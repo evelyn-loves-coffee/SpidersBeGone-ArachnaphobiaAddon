@@ -1,4 +1,4 @@
---[[ Spiders Be Gone - curated spider database.
+--[[ Arachnaphobia Shield - curated spider database.
 
 Owner-supplied data (2026-10-15, "here is a list of some known spider names and
 locations"): creature IDs of every spider the owner wants covered, annotated
@@ -20,8 +20,8 @@ Zone comments record the provenance of each entry. Nameplate tracking does
 not require a zone database or a separate zone-warning command.
 --]]
 
-SBeGone = SBeGone or {}
-SBeGone.DB = {
+ArachnaphobiaShield = ArachnaphobiaShield or {}
+ArachnaphobiaShield.DB = {
 	counts = { ids = 124, patterns = 14 },
 	content = "Classic Azeroth baseline; Forever additions detected by family/name",
 

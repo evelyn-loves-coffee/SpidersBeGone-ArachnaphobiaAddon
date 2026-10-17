@@ -15,4 +15,4 @@ dist/
 
 # Local Python caches and personal custom images are never release inputs.
 __pycache__/
-SpidersBeGone/Custom/
+ArachnaphobiaShield/Custom/

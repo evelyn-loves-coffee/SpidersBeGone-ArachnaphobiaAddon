@@ -160,7 +160,7 @@ nameplate cover still needs neither source.
 
 ## Current shipped data
 
-`SpidersBeGone/SpiderDB.lua` retains the existing owner-curated baseline,
+`ArachnaphobiaShield/SpiderDB.lua` retains the existing owner-curated baseline,
 filtered to 124 IDs. Tcha'kaz (17236) was the lone TBC-introduced entry in
 that list and has been removed. The supplied NoSpider collection script
 places it in its TBC group despite its Hinterlands location. Filtering by

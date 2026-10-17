@@ -1,6 +1,6 @@
-# Choose your cover image (v0.3.3)
+# Choose your cover image (v0.3.8)
 
-Run `/sbg config` to open the cover picker. Click a preset to preview it
+Run `/as config` to open the cover picker. Click a preset to preview it
 and update every cover immediately. The choice is saved in addon settings
 and survives reloads; the fox is the default for new or migrated settings.
 The window appears only when requested. Close it to return to play.
@@ -16,20 +16,33 @@ the addon is disabled keeps it disabled. Tracking, cover sizing and the
 
 | Choice | Appearance | Command |
 | --- | --- | --- |
-| Fox | Supplied illustration, original colors, fitted in proportion | `/sbg cover fox` |
-| Muted red | Red squircle, similar in spirit to the previous cover | `/sbg cover red` |
-| Muted blue | Plain blue squircle | `/sbg cover blue` |
-| Sage green | Plain green squircle | `/sbg cover sage` |
-| Plain charcoal | Uniform dark grey square | `/sbg cover charcoal` |
+| Fox | Supplied illustration on a navy-toned camouflage squircle card, original colors, fitted in proportion | `/as cover fox` |
+| Muted red | Red camouflage squircle, similar in spirit to the previous cover | `/as cover red` |
+| Muted blue | Blue camouflage squircle | `/as cover blue` |
+| Sage green | Green camouflage squircle | `/as cover sage` |
+| Plain charcoal | Dark grey camouflage squircle | `/as cover charcoal` |
 
 For simple backgrounds, these are starting suggestions to try according to
-personal preference. They have no animation, patterns or spider imagery.
-All shipped textures have opaque pixels throughout the square: the rounded
-shapes sit on a solid dark blue backing. Picture colors are preserved.
-Opacity defaults to 100%; at lower settings the scene can show through. Models can still extend beyond an undersized or
-misaligned cover; the nameplate-tracking limitations still apply.
+personal preference. They have no animation and no spider imagery. Since
+v0.3.7 every preset is a 32-bit RGBA **camouflage squircle** with
+**transparent rounded corners**: the world shows through the corners only,
+while the shape itself is a busy three-tone pattern of its color plus fine
+grain. The camouflage is deliberate — this client fades nameplates (and
+their children, i.e. the covers) with distance, and a flat fill lets a
+spider's outline trace through that fade while a busy pattern does not.
+Since v0.3.8 the fox sits on a navy-toned **camouflage** squircle card,
+so the open areas around the illustration are solid backing rather than
+transparency (v0.3.6 cut them to holes and the result read as too
+see-through). Picture colors are preserved. The picker preview shows a
+checker behind every image, so corner transparency is visible there before
+you commit. Custom images keep a navy backing behind them (minimum coverage
+floor); the setup and troubleshooting guide for custom images is in the
+[README](../README.md#custom-cover-images--setup-and-troubleshooting).
+All covers are fully opaque (see [Opacity](#opacity-removed-in-v038)).
+Models can still extend beyond an undersized or misaligned cover; the
+nameplate-tracking limitations still apply.
 
-`/sbg cover` lists choices and the selected image. `/sbg options` is
+`/as cover` lists choices and the selected image. `/as options` is
 an alias for the picker. If this client's window APIs reject the panel,
 the addon prints command-based instructions and tracking continues.
 
@@ -37,46 +50,52 @@ Offline layout preview (client fonts/rendering may differ):
 
 ![Cover picker layout](art/config_preview.png)
 
-## Opacity
+## Opacity (removed in v0.3.8)
 
-The slider in `/sbg config` runs only from **80% to 100%**, with 1% steps.
-The default is **100% (fully opaque)**. Changes update the checkerboard preview
-and existing covers immediately, save automatically and survive reloads.
-Choosing a different image preserves opacity; adjusting opacity does not
-replace an unfinished custom-image path. Lower opacity lets some of the
-scene show through, so use 100% for complete opacity within the cover.
+Covers are always **fully opaque**. The 80–100% buttons and the
+`/as opacity` command are gone. The reason is not a matter of taste:
+this client fades nameplates with distance, and a cover is a child of the
+nameplate, so it fades with it no matter what vertex alpha the addon sets.
+A preference that cannot do what it says is worse than none, so v0.3.8
+removes the control, the saved value and the command entirely. A saved
+opacity value from an older version is dropped on load; `/as opacity`
+now reports the retired subcommand and changes nothing. The camouflage
+presets (and the fox card) are the real answer to the distance fade: a
+busy pattern makes a spider's outline much harder to trace than a flat
+fill. The corpse warning is not faded either; it is an independent
+frame.
 
-The range is enforced in the control, saved-settings migration and rendering,
-so a low or invalid old value cannot draw a cover below the 80% setting.
-Missing/invalid numeric values use 100%; values below 80% clamp to 80%, and
-values above 100% clamp to 100%. The editor and corpse warning are not faded.
-Custom images retain a backing and may appear more opaque than the selected
-value, protecting areas where an image contains transparent pixels.
-
-Command fallback: `/sbg opacity 0.8` or `/sbg opacity 1`; bare
-`/sbg opacity` reports the current value. If the client rejects native
-Slider APIs, the picker keeps working with 80/85/90/95/100% buttons. Covers
-remain permanently click-through; only the explicit configuration window
-accepts slider input. Native slider rendering still needs partner validation.
+The picker still creates no native Slider frame: a Slider captures the
+mouse for dragging, and on this client a click in the picker left the
+cursor frozen, so v0.3.5 removed it. Covers remain permanently
+click-through; only the explicit configuration window accepts clicks, and
+its buttons hold no mouse state. The button-only picker still needs partner
+validation.
 
 ## Use your own image
 
-Prepare a local square TGA texture, for example:
+Prepare a local square TGA texture in the addon's custom folder, for
+example:
 
 ```text
-<game folder>/Interface/AddOns/MyCovers/flower.tga
+<game folder>/Interface/AddOns/ArachnaphobiaShield/Custom/flower.tga
 ```
 
 Then paste its game-relative path into the picker and click **Use image**,
 or enter:
 
 ```text
-/sbg cover custom Interface\AddOns\MyCovers\flower.tga
+/as cover custom Interface\AddOns\ArachnaphobiaShield\Custom\flower.tga
 ```
 
-Use a separate `MyCovers` folder to keep personal images outside addon
-updates. `/sbg cover custom` reselects the last saved custom path.
-Choose a bundled preset at any time to switch back.
+Since v0.3.8 the validated path is strict: a custom image must live under
+`Interface\AddOns\ArachnaphobiaShield\Custom\`. The folder is created by you,
+is git-ignored, and never ships in the release zip, so personal images
+stay outside addon updates; when updating, extract the zip over the
+existing folder (or re-copy your images). Legacy `MyCovers` paths from
+older versions are rejected on load and the selection falls back to the
+fox. `/as cover custom` reselects the last saved custom path. Choose a
+bundled preset at any time to switch back.
 
 The addon reads only a local `.tga` texture through the game's normal UI
 API. The picker does not browse Windows files, download images or upload
@@ -84,7 +103,7 @@ anything. Windows paths and web addresses are rejected. To use a PNG or
 JPEG illustration, convert it first with the included local helper:
 
 ```powershell
-uv run --with pillow python tools/import_cover.py "C:\Pictures\flower.png" --output "C:\Games\WoW\Interface\AddOns\MyCovers\flower.tga"
+uv run --with pillow python tools/import_cover.py "C:\Pictures\flower.png" --output "C:\Games\WoW\Interface\AddOns\ArachnaphobiaShield\Custom\flower.tga"
 ```
 
 Replace those example paths with your own. The helper reads the source
@@ -105,20 +124,25 @@ preview to confirm the image appears. A solid backing still hides the area
 behind transparent portions of the cover.
 
 Personal custom files are not part of release packages. The packaging tool
-uses an explicit list of approved bundled images. `SpidersBeGone/Custom/`
-is ignored by Git if you keep local files there during development.
+uses an explicit list of approved bundled images, and `ArachnaphobiaShield/Custom/`
+is ignored by Git.
 
 ## Additional examples and maintenance
 
-The preset list in `SpidersBeGone/Appearance.lua` drives the buttons and
+The preset list in `ArachnaphobiaShield/Appearance.lua` drives the buttons and
 selection handler. To ship another approved illustration, prepare its TGA,
 add a preset entry, add the filename to `tools/package_addon.py`, and
 regenerate the package. Changing a user's custom image requires no code
 changes. Supplied artwork needs permission before publication.
 
-`tools/make_backgrounds.py` regenerates only the four original simple
-backgrounds; `tools/make_art.py` regenerates only the addon icon. Neither
-overwrites the supplied fox. The supplied fox is included with the user's
+`tools/make_backgrounds.py` regenerates the four camouflage squircles, the
+four 8×8 picker UI textures and `cover-backdrop.tga`; `tools/make_art.py`
+regenerates only the addon icon. Neither overwrites the supplied fox.
+`tools/make_cover_alpha.py` re-cuts the fox import and places it on the
+camo card; `tools/render_config_preview.py` re-renders
+[art/config_preview.png](art/config_preview.png); and
+`tools/make_choices_preview.py` re-renders
+[art/cover_choices.png](art/cover_choices.png). The supplied fox is included with the user's
 explicit permission to publish it with this addon. No NoSpider artwork is
 used.
 

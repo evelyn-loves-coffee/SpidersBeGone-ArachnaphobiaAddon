@@ -1,15 +1,15 @@
 -- A brief, click-through notice when an observed spider dies. This does not
 -- position a corpse cover, inspect the combat log, or query pointer input.
-SBeGone = SBeGone or {}
+ArachnaphobiaShield = ArachnaphobiaShield or {}
 local W = { DURATION = 1.75, RECENT_SECONDS = 3, MAX_RECENT = 80 }
-SBeGone.DeathWarning = W
-local A = SBeGone.Access
+ArachnaphobiaShield.DeathWarning = W
+local A = ArachnaphobiaShield.Access
 W.byToken, W.byGUID = {}, {}
 W.generation = 0
 
 local function running()
-	return SBeGone.ready and SBeGoneSettings and SBeGoneSettings.enabled
-		and not SBeGone.hidden and not SBeGone.autoSuspended
+	return ArachnaphobiaShield.ready and ArachnaphobiaShieldSettings and ArachnaphobiaShieldSettings.enabled
+		and not ArachnaphobiaShield.hidden and not ArachnaphobiaShield.autoSuspended
 end
 
 local function now()
@@ -68,7 +68,7 @@ local function warn(record, time)
 	record.warned = true
 	local frame = popup()
 	if not frame or not pcall(frame.Show, frame) then
-		print("SBG| LOOK AWAY - spider corpse may be visible (warning popup unavailable)")
+		print("AS| LOOK AWAY - spider corpse may be visible (warning popup unavailable)")
 		return
 	end
 	W.generation = W.generation + 1
@@ -138,7 +138,7 @@ function W.CheckUnit(token)
 		local guid, _, readable = A.Query(UnitGUID, token)
 		if not readable then W.ForgetToken(token, true); return end
 		if guid ~= record.guid then W.ForgetToken(token); return end
-	elseif not SBeGone.Units.IsSpider(token) then
+	elseif not ArachnaphobiaShield.Units.IsSpider(token) then
 		W.ForgetToken(token)
 		return
 	end
@@ -162,7 +162,7 @@ function W.OnDeath(guid)
 end
 
 function W.Tick()
-	if not SBeGone.ready or not SBeGoneSettings or not SBeGoneSettings.enabled or SBeGone.hidden then
+	if not ArachnaphobiaShield.ready or not ArachnaphobiaShieldSettings or not ArachnaphobiaShieldSettings.enabled or ArachnaphobiaShield.hidden then
 		W.Clear()
 		return
 	end

@@ -1,18 +1,18 @@
 > Historical reference only. v0.3.1 removed screen-positioned covers and all editing/input modes. Follow [HANDOFF.md](HANDOFF.md) for the current implementation and test machine. This file is not shipped in the addon ZIP.
 
-# Spiders Be Gone — Arachnaphobia Addon
+# Arachnaphobia Shield — Arachnaphobia Addon
 
 **Historical design and probe log.** Current behavior is documented in
 [TRACKING-ONLY.md](TRACKING-ONLY.md) and [HANDOFF.md](HANDOFF.md). Their v0.2.6
 tracking-only controls supersede the cursor-mode design and fallback
 instructions below. Retain this document as the earlier API investigation.
 
-- Repo: `SpidersBeGone-ArachnaphobiaAddon`
+- Repo: `ArachnaphobiaShield`
 - Target client: **World of Warcraft Forever** — official, original, classic-based
   (1.x line) client, version **1.60.1**, with new content. No content or APIs from
   WoW 2.x or later exist on this client.
 - Working copy: local git clone (machine-local path — e.g.
-  `~/Apps/SpidersBeGone-ArachnaphobiaAddon` on the 2026-10-14 machine)
+  `~/Apps/ArachnaphobiaShield` on the 2026-10-14 machine)
 - In-game install path (verified): `.../World of Warcraft/_classic_beta_/Interface/AddOns/`
   (reachable locally via the `~/Apps/wow/AddOns` symlink).
 
@@ -43,7 +43,7 @@ Hard constraints:
 Facts (verified from the local installation):
 
 - Client install: `World of Warcraft/_classic_beta_/Interface/` (Steam/Proton prefix).
-- **Confirmed (2026-10-13, in-client error stack + SBG2 run):** modern codebase
+- **Confirmed (2026-10-13, in-client error stack + AS2 run):** modern codebase
   (`Interface/AddOns/Blizzard_ChatFrameBase/...` in the stack) with classic 1.x
   *content* on a **reduced, custom API set** (classic-era functions stripped,
   modern `C_*` infrastructure present). Details in the confirmed lists below.
@@ -92,7 +92,7 @@ fallback for units returning no family.
 unit-position API exist on this client → the 3D-follow cover is **infeasible**
 here. Pivoted to UI-anchored covers (§3.0).
 
-**SBG4 results (2026-10-13, spider targeted in Tirisfal Glades):**
+**AS4 results (2026-10-13, spider targeted in Tirisfal Glades):**
 `UnitCreatureFamily` ✓ ("Spider", 3), `UnitCreatureID` ✓ (1504),
 `UnitPosition("player")` ✓ (2070.9, 1694.3, z=0, map=0 — player/party/raid
 only), **`ClosestUnitPosition(1504)` → nil in a starting zone** (dead),
@@ -100,7 +100,7 @@ only), **`ClosestUnitPosition(1504)` → nil in a starting zone** (dead),
 `GetUICameraInfo` present (probe had a syntax error — moot now),
 `GetEffectiveScreenInfo` ✓ (1772×1181 at UI scale). **3D path closed.**
 
-**SBG5 results (2026-10-13, warrior in Tirisfal Glades, mouse over a spider):**
+**AS5 results (2026-10-13, warrior in Tirisfal Glades, mouse over a spider):**
 `GetCursorPosition` ✓ (206,409), `UnitClass` ✓ ("Warrior"),
 `UnitFactionGroup` ✓ ("Horde"), `PlaySoundFile` ✓, `mouseover` token ✓
 ("Young Night Web Spider", ("Spider",3), visible, `UnitIsDead` tracks death
@@ -113,12 +113,12 @@ addon on this exact client (Spoken_Books/Commands.lua) proved the actual
 mechanism — **classic two-part registration**: `_G.SLASH_<GROUP>N = "/cmd"`
 globals declare the typed command strings, and `SlashCmdList["<GROUP>"] =
 function(msg)` (uppercase group name) is the handler; `msg` is the rest of
-the line after the command word. **`Bindings` table absent** (§4.5; SBG6 also killed the `KEY_DOWN`
+the line after the command word. **`Bindings` table absent** (§4.5; AS6 also killed the `KEY_DOWN`
 event route — `Bindings.xml` is the live candidate).
 **`UnitCanAttack` is two-arg on this client**: `UnitCanAttack(unit, target)`
 (use `UnitCanAttack("player", unit)` for hostile checks).
 
-**SBG6 results (2026-10-13, event availability map)** — run with mouse over a
+**AS6 results (2026-10-13, event availability map)** — run with mouse over a
 spider AND the spider targeted (pcall `RegisterEvent`; the client *errors* on
 unknown events): **present** = `UNIT_TARGET`, `PLAYER_ENTERING_WORLD`,
 `ZONE_CHANGED_NEW_AREA`, `VARIABLES_LOADED`, `UNIT_AURA`, `PLAYER_LOGIN`.
@@ -126,7 +126,7 @@ unknown events): **present** = `UNIT_TARGET`, `PLAYER_ENTERING_WORLD`,
 `RAID_UPDATE`, `CHAT_COMMAND`, `ACTIONBAR_BUTTON_UP`. Consequences: hover
 detection must **poll** the `mouseover` token each tick; the panic hotkey
 cannot use `KEY_DOWN` (§4.5); the driver must not rely on
-`RegisterEvent("UPDATE")` (§3.4, SBG7 §12.10).
+`RegisterEvent("UPDATE")` (§3.4, AS7 §12.10).
 
 **M2 in-game verified (2026-10-13):** clean `/reload`; `/spider` prints both
 selftest lines (two-part Spoken-style registration works); `/run` load-check
@@ -143,9 +143,9 @@ APIs the plan relies on (**confirmed** 2026-10-13 unless noted):
 | `C_Timer` | timers | ✓ |
 | `SLASH_<GROUP>N` globals + `SlashCmdList["<GROUP>"]` handler (two-part, Spoken-verified) | slash commands | ✓ |
 | `GetBuildInfo()` → 4 **strings** (4th = interface no.) | interface check | ✓ |
-| `GetCursorPosition` | hover-shield anchor | ✓ (SBG5) |
-| `GetEffectiveScreenInfo` | screen size (replaces absent `GetScreenSize`) | ✓ (SBG4) |
-| `UnitClass` / `UnitFactionGroup` | "is a player?" (replaces absent `IsPlayerUnit`) | ✓ (SBG5) |
+| `GetCursorPosition` | hover-shield anchor | ✓ (AS5) |
+| `GetEffectiveScreenInfo` | screen size (replaces absent `GetScreenSize`) | ✓ (AS4) |
+| `UnitClass` / `UnitFactionGroup` | "is a player?" (replaces absent `IsPlayerUnit`) | ✓ (AS5) |
 | `CreateFrame`, `SetPoint`, `SetSize`, `SetTexture`, `SetFrameStrata`, `SetClampRect`, `CheckBox`, `Slider`, `EditBox`, `SetBackdrop`, `PlaySoundFile` | UI | assumed ✓, spot-check §12.6 |
 | `SavedVariables` in `.toc` | persistence | ✓ |
 
@@ -213,7 +213,7 @@ and `C_Map.PositionToScreen` both absent) and **no** unit-position API
   key remove all.
 - **Frame cover (auto):** when `target`/`focus` is a spider, a tinted plate
   covers that unit frame (`TargetFrame`/`FocusFrame` — both exist; **target
-  and focus only**: SBG5 found no `PartyFrame1`/`MainMenuBar` globals on this
+  and focus only**: AS5 found no `PartyFrame1`/`MainMenuBar` globals on this
   client, so party-frame covers are out of scope) — hides the spider's
   name/health UI.
 - **Parkable shields (manual):** up to 8 pre-parked, **draggable** cover discs
@@ -225,7 +225,7 @@ and `C_Map.PositionToScreen` both absent) and **no** unit-position API
   by slash and/or the panic hotkey.
 
 **Detection (final):** `select(2, UnitCreatureFamily(unit)) == 3` ("Spider")
-as the primary signal — **confirmed working on a wild spider** (SBG4). Fallback
+as the primary signal — **confirmed working on a wild spider** (AS4). Fallback
 name patterns `{"Spider", "Gloomweaver"}` + user `extraNames` for units that
 return no family (wiki: family "does not work on all creatures").
 
@@ -248,23 +248,23 @@ frame cover is a cheap extra).
      is absent; `UnitClass`/`UnitFactionGroup` confirmed in the wiki table,
      in-client probe §12.8);
   2. `select(2, UnitCreatureFamily(unit)) == 3` — "Spider" family;
-     **confirmed working on a wild spider** (SBG4: "Spider", id 3);
+     **confirmed working on a wild spider** (AS4: "Spider", id 3);
   3. OR `UnitName(unit)` matches `settings.namePatterns`
      (default `{"Spider", "Gloomweaver"}`) or is in `settings.extraNames`
      — fallback for units returning no family / new content;
   4. level window `settings.minLevel..settings.maxLevel`;
   5. if `settings.requireHostile` and **not** `UnitCanAttack("player", unit)`
      → false. (Two-arg form: `UnitCanAttack(unit, target)` — confirmed by
-     SBG5's usage error.)
+     AS5's usage error.)
 
 - Tracked list is rebuilt on events (`UNIT_TARGET`, `UNIT_PET`, `PARTY_UPDATE`,
   `RAID_UPDATE`, `PLAYER_ENTERING_WORLD`), not per frame.
 
-### 3.2 Projection (Project.lua) — **CLOSED on this build, seam kept** (SBG4)
+### 3.2 Projection (Project.lua) — **CLOSED on this build, seam kept** (AS4)
 
 > **Status (2026-10-13):** the APIs this section assumed (`GetUnitPosition`,
 > `WorldFramePoint3D`) are absent, and `ClosestUnitPosition` (the only
-> candidate position source) returned nil in a starting zone (§2, SBG4).
+> candidate position source) returned nil in a starting zone (§2, AS4).
 > The math below is kept as the **re-activation seam**: if a future client
 > build exposes a unit-position + camera API, Project.lua implements exactly
 > this. v1.0 anchors are UI-space only (§3.0).
@@ -311,14 +311,14 @@ This two-point projection gives correct perspective scaling for free.
 - Modern codebase (confirmed): all `.lua` files run at client load
   (character-select time). Initialize structures at file load, arm the driver
   on `PLAYER_ENTERING_WORLD`, reset all covers on logout events.
-- **Events are mapped (SBG6, 2026-10-13).** Present: `UNIT_TARGET`,
+- **Events are mapped (AS6, 2026-10-13).** Present: `UNIT_TARGET`,
   `PLAYER_ENTERING_WORLD`, `ZONE_CHANGED_NEW_AREA`, `VARIABLES_LOADED`,
   `UNIT_AURA`, `PLAYER_LOGIN`. Absent: `MOUSEOVER`, `UPDATE`, `KEY_DOWN`,
   `KEY_UP`, `PARTY_UPDATE`, `RAID_UPDATE`, `CHAT_COMMAND`,
   `ACTIONBAR_BUTTON_UP`. **`RegisterEvent` *errors* on unknown events** —
   every registration must come from the present list (or be pcall-guarded).
   Classic-only event names (e.g. `UPDATE_AURAS`) are **not** used.
-- **Driver (tick loop):** `OnUpdate` script on one driver frame if SBG7
+- **Driver (tick loop):** `OnUpdate` script on one driver frame if AS7
   (§12.10) confirms it (expected — the script system is separate from the
   pruned event system); otherwise a `C_Timer.After(0.1, tick)`
   self-rescheduling loop (C_Timer confirmed present). Either way the same
@@ -330,10 +330,10 @@ This two-point projection gives correct perspective scaling for free.
 
 ## 4. What the addon must contain (file inventory)
 
-Repo layout (the `SpidersBeGone/` folder is the installable addon):
+Repo layout (the `ArachnaphobiaShield/` folder is the installable addon):
 
 ```
-SpidersBeGone-ArachnaphobiaAddon/
+ArachnaphobiaShield/
 ├── README.md                  install + usage + config reference
 ├── LICENSE                    MIT
 ├── .gitignore
@@ -342,10 +342,10 @@ SpidersBeGone-ArachnaphobiaAddon/
 │   └── art/                   PNG previews of the generated art
 ├── tools/
 │   └── make_art.py            regenerates all art (stdlib only) → re-run anytime
-└── SpidersBeGone/             ← copy this folder to Interface/AddOns/
-    ├── SpidersBeGone.toc      Interface (TBD M1), Title "Spiders Be Gone",
+└── ArachnaphobiaShield/             ← copy this folder to Interface/AddOns/
+    ├── ArachnaphobiaShield.toc      Interface (TBD M1), Title "Arachnaphobia Shield",
     │                          Notes, Version, Author, IconTexture,
-    │                          SavedVariables: SBeGoneSettings
+    │                          SavedVariables: ArachnaphobiaShieldSettings
     ├── icon.tga               original 32x32 "no spider" icon (generated)
     ├── cover.tga              original 64x64 tintable cover patch (generated)
     ├── Core.lua               init/lifecycle/driver/debug ring buffer
@@ -358,7 +358,7 @@ SpidersBeGone-ArachnaphobiaAddon/
     └── Locales.lua            enUS strings (i18n stub for later)
 ```
 
-### 4.1 Settings (`SBeGoneSettings`, versioned)
+### 4.1 Settings (`ArachnaphobiaShieldSettings`, versioned)
 
 ```lua
 {
@@ -379,7 +379,7 @@ SpidersBeGone-ArachnaphobiaAddon/
 }
 ```
 
-- Load: `loadstring("return " .. tostring(SBeGoneSettings))`-style deep copy is
+- Load: `loadstring("return " .. tostring(ArachnaphobiaShieldSettings))`-style deep copy is
   **not** used — plain table traversal with per-key type checks; unknown/missing
   → default; corrupt → full reset + chat message. (No `loadstring` of untrusted
   data at all.)
@@ -423,18 +423,18 @@ this client.
 A keybind that instantly hides **all** covers (press again to restore), no chat
 needed — for when a cover occludes something the player must see.
 
-**Mechanism (final order, SBG6 2026-10-13 — `KEY_DOWN` is absent, so the
+**Mechanism (final order, AS6 2026-10-13 — `KEY_DOWN` is absent, so the
 event route is dead):** the Lua `Bindings` table is **absent** on this
 client; keybindings are XML (`<Bindings>` files — Spoken ships a
 `Bindings.xml` with `<Binding name="..." header="...">LuaExpression()</Binding>`
 entries, though notably it is *not* listed in its TOC, so its loading is
 itself unverified). In order:
 1. **`Bindings.xml`** (Spoken pattern, properly listed in our TOC): a named
-   binding (e.g. `SBG_HIDE_COVERS`, header "SPIDERS BE GONE", default key
-   **F12**) calling a global `SBeGoneBindingCommand()` that toggles a
+   binding (e.g. `AS_HIDE_COVERS`, header "ARACHNOPHOBIA SHIELD", default key
+   **F12**) calling a global `ArachnaphobiaShieldBindingCommand()` that toggles a
    session-level `hidden` flag (driver skips all placement while set).
    Verification step: our file must actually load — check the client's
-   key-binding UI for the "SPIDERS BE GONE" header (Spoken's own unlisted
+   key-binding UI for the "ARACHNOPHOBIA SHIELD" header (Spoken's own unlisted
    file may never have loaded either).
 2. If (1) doesn't load: modifier-key polling in the driver tick (crude but
    dependency-free).
@@ -455,8 +455,8 @@ State resets on reload, so it can never leave the player permanently hidden.
 | # | Deliverable | Exit criteria | Status |
 |---|---|---|---|
 | M0 | Repo + this plan | committed, pushed | ✅ done |
-| M1 | In-game API verification (probe rounds SBG1–SBG4, §12) | `docs/API-VERIFICATION.md` written from real sessions | ✅ done (2026-10-13) |
-| M2 | TOC + load skeleton: `SpidersBeGone.toc` (interface 16001), `Core.lua`, SavedVariables, `/spider` selftest, generated icon | addon loads, appears in AddOns list, `/spider` prints build info, `/run` load-check works | ✅ done (2026-10-13: clean `/reload`, `/spider` prints both selftest lines, `/run` load-check = 0.1.0) |
+| M1 | In-game API verification (probe rounds AS1–AS4, §12) | `docs/API-VERIFICATION.md` written from real sessions | ✅ done (2026-10-13) |
+| M2 | TOC + load skeleton: `ArachnaphobiaShield.toc` (interface 16001), `Core.lua`, SavedVariables, `/spider` selftest, generated icon | addon loads, appears in AddOns list, `/spider` prints build info, `/run` load-check works | ✅ done (2026-10-13: clean `/reload`, `/spider` prints both selftest lines, `/run` load-check = 0.1.0) |
 | M3 | **Hover shield** (auto: cursor-anchored cover while mouseover is a spider) + **parkable shields** (manual draggable covers, positions saved) | hovering a Tirisfal spider hides its model; shields persist across `/reload` and logout | code done 2026-10-14 (offline suite green); pending in-game verification |
 | M4 | **Blind mode** + **panic hotkey** (§4.5) + **frame cover** for target/focus (optional) | panic key instantly hides all covers; frame cover tracks the target frame | — |
 | M5 | Config window (color, opacity, size, extraNames, enable toggles) + SavedVariables polish (migrate/reset/validation) | settings survive logout/reload; corrupt SV self-heals | — |
@@ -483,7 +483,7 @@ No automated test runner exists for 1.x addons; verification is:
    - UI scale change (Ctrl+` in 1.x): cover reprojects correctly next frame.
 3. **Debug ring buffer** (`/spider debug`): every hide reason and projection
    failure is logged with unit token + reason string (auditability).
-4. Install test: copy `SpidersBeGone/` → `~/Apps/wow/AddOns/`, character
+4. Install test: copy `ArachnaphobiaShield/` → `~/Apps/wow/AddOns/`, character
    select, confirm enabled with no red errors in `/run print(GetError())`
    pattern (classic: check no Lua errors on login via chat `SCRIPT ERROR`).
 
@@ -577,7 +577,7 @@ mouseover).
 | 1 | ~~Wrong `## Interface:` number~~ **RESOLVED**: 16001 confirmed (2026-10-13) | — | — | `GetBuildInfo()` 4th value; Spoken TOC cross-check |
 | 2 | ~~No world→screen projection~~ **CONFIRMED ABSENT** (`WorldFramePoint3D`, `C_Map.PositionToScreen`, `GetUnitPosition`) | — | Partially mitigated | Wiki shows Forever has `ClosestUnitPosition` (starting zones) + `GetUICameraInfo`/`GetCameraZoom` → **manual projection** path, probe §12.7; UI-anchored covers remain the guaranteed fallback (§3.0) |
 | 3 | ~~Manual projection math/calibration~~ **CLOSED (2026-10-13)**: `ClosestUnitPosition` → nil in starting zone (Tirisfal); no spider position obtainable | — | — | UI-anchored design is final; Project.lua seam kept for a future client that exposes spider positions |
-| 4 | ~~`GetUnitFamily` absent~~ **CONFIRMED ABSENT**; `UnitCreatureType`="Beast" too broad | — | Resolved better | **`UnitCreatureFamily` confirmed working** ("Spider", id 3, SBG4) — primary detection; name patterns + `extraNames` as fallback (§3.0) |
+| 4 | ~~`GetUnitFamily` absent~~ **CONFIRMED ABSENT**; `UnitCreatureType`="Beast" too broad | — | Resolved better | **`UnitCreatureFamily` confirmed working** ("Spider", id 3, AS4) — primary detection; name patterns + `extraNames` as fallback (§3.0) |
 | 5 | Cover undersized for large/flat spiders | Medium | Medium | sizeScale/minSize/maxSize/yOffset tuning; v1.1 wide rect + height table |
 | 6 | Can't cover non-token spiders (API boundary) | Certain | Medium | Documented limitation; target+mouseover cover the real pain points |
 | 7 | Proton/Wine path quirks | Low | Low | Standard folder copy into `Interface/AddOns/` (symlinked); test at M2 |
@@ -593,9 +593,9 @@ mouseover).
    soft patch; generator `tools/make_art.py`), tinted by the user's color/opacity.
 3. ~~Icon~~ — resolved: original generated 32x32 "no spider" icon (`icon.tga`).
 4. Panic hotkey — owner decision pending (mechanism documented in §4.5;
-   SBG6 killed the `KEY_DOWN` route — `Bindings.xml` is the live candidate).
+   AS6 killed the `KEY_DOWN` route — `Bindings.xml` is the live candidate).
 5. **Pivot feature set (2026-10-13, §3.0):** 3D-follow is infeasible on this
-   client (SBG4 closed the 3D path). Owner requirement recorded 2026-10-13:
+   client (AS4 closed the 3D path). Owner requirement recorded 2026-10-13:
    **cover ALL spiders** — covers must persist, not just last while hovered
    (→ sticky hover shield, `stickyCovers` default on). v1.0 scope: sticky
    hover shield + parkable shields + blind mode + `/spider clear`; frame
@@ -604,7 +604,7 @@ mouseover).
 
 ## 11. Conventions
 
-- Lua 5.0-compatible (see §2). No global pollution: all state under one `local SBeGone = {}`
+- Lua 5.0-compatible (see §2). No global pollution: all state under one `local ArachnaphobiaShield = {}`
   namespace table (plus the SV table); files attach to it. **Sanctioned extra
   globals** (framework conventions, mirroring the working Spoken addon):
   `SLASH_SPIDER1`/`SLASH_SPIDER2` (slash command registration) and the
@@ -612,50 +612,50 @@ mouseover).
 - No per-frame string concatenation outside debug mode.
 - Comments: `--` only, short; each file starts with a one-line purpose comment.
 - Git: `main` branch, conventional-ish lowercase commit messages, tag `v1.0.0`
-  at M6. Addon folder name == TOC file name == `SpidersBeGone`.
+  at M6. Addon folder name == TOC file name == `ArachnaphobiaShield`.
 
 ## 12. M1 in-client verification scripts
 
-Run in-game, in character (chat box). All output is prefixed `SBG|`. The single
+Run in-game, in character (chat box). All output is prefixed `AS|`. The single
 line reports every plan assumption; the individual lines are the same probes for
 readability.
 
 ### 12.1 One-shot report (one line, paste after the chat input)
 
 ```
-/run local function p(k,v) print(("SBG| %s: %s"):format(k, tostring(v))) end; local a,b,c,d = GetBuildInfo(); p("buildInfo", string.format("major=%s minor=%s patch=%s build=%s", tostring(a), tostring(b), tostring(c), tostring(d))); p("lua50_marker", select(2, _G)); p("_VERSION", _VERSION); p("unpack_global", unpack ~= nil); p("table.unpack", rawget(table, "unpack") ~= nil); p("table.pack", rawget(table, "pack") ~= nil); p("math.huge", math.huge ~= nil); p("WorldFramePoint3D", WorldFramePoint3D ~= nil); p("GetUnitFamily", GetUnitFamily ~= nil); p("UnitCreatureType", UnitCreatureType ~= nil); p("GetUnitPosition", GetUnitPosition ~= nil); p("GetNumAuras_returns", GetNumAuras and select("#", GetNumAuras("player")) or "n/a"); p("screen", (function() local w,h,s = GetScreenSize(); return string.format("%sx%s scale=%s", w, h, tostring(s)) end)()); p("locale", GetLocale()); p("zone", GetZoneText()); p("Minimap", Minimap ~= nil); p("GameFontHighlightSmall", GameFontHighlightSmall ~= nil); p("SetBackdrop", SetBackdrop ~= nil); p("core_unit_apis", (UnitIsVisible and UnitIsDead and UnitCanAttack and UnitLevel and UnitName and IsPlayerUnit and GetUnitAura and "all_present") or "SOME_MISSING"); local px,py,pz = GetUnitPosition("player"); p("playerPos", string.format("%.1f %.1f %.1f", px, py, pz)); if WorldFramePoint3D then local sx,sy,beh = WorldFramePoint3D(px,py,pz); p("projPlayerScreen", string.format("x=%s y=%s behind=%s", tostring(sx), tostring(sy), tostring(beh))) end
+/run local function p(k,v) print(("AS| %s: %s"):format(k, tostring(v))) end; local a,b,c,d = GetBuildInfo(); p("buildInfo", string.format("major=%s minor=%s patch=%s build=%s", tostring(a), tostring(b), tostring(c), tostring(d))); p("lua50_marker", select(2, _G)); p("_VERSION", _VERSION); p("unpack_global", unpack ~= nil); p("table.unpack", rawget(table, "unpack") ~= nil); p("table.pack", rawget(table, "pack") ~= nil); p("math.huge", math.huge ~= nil); p("WorldFramePoint3D", WorldFramePoint3D ~= nil); p("GetUnitFamily", GetUnitFamily ~= nil); p("UnitCreatureType", UnitCreatureType ~= nil); p("GetUnitPosition", GetUnitPosition ~= nil); p("GetNumAuras_returns", GetNumAuras and select("#", GetNumAuras("player")) or "n/a"); p("screen", (function() local w,h,s = GetScreenSize(); return string.format("%sx%s scale=%s", w, h, tostring(s)) end)()); p("locale", GetLocale()); p("zone", GetZoneText()); p("Minimap", Minimap ~= nil); p("GameFontHighlightSmall", GameFontHighlightSmall ~= nil); p("SetBackdrop", SetBackdrop ~= nil); p("core_unit_apis", (UnitIsVisible and UnitIsDead and UnitCanAttack and UnitLevel and UnitName and IsPlayerUnit and GetUnitAura and "all_present") or "SOME_MISSING"); local px,py,pz = GetUnitPosition("player"); p("playerPos", string.format("%.1f %.1f %.1f", px, py, pz)); if WorldFramePoint3D then local sx,sy,beh = WorldFramePoint3D(px,py,pz); p("projPlayerScreen", string.format("x=%s y=%s behind=%s", tostring(sx), tostring(sy), tostring(beh))) end
 ```
 
 ### 12.2 Individual probes
 
 ```lua
-/run print("SBG lua: 5.0marker=" .. tostring(select(2, _G)) .. " _VERSION=" .. tostring(_VERSION) .. " table.unpack=" .. tostring(rawget(table, "unpack") ~= nil) .. " table.pack=" .. tostring(rawget(table, "pack") ~= nil) .. " math.huge=" .. tostring(math.huge ~= nil))
+/run print("AS lua: 5.0marker=" .. tostring(select(2, _G)) .. " _VERSION=" .. tostring(_VERSION) .. " table.unpack=" .. tostring(rawget(table, "unpack") ~= nil) .. " table.pack=" .. tostring(rawget(table, "pack") ~= nil) .. " math.huge=" .. tostring(math.huge ~= nil))
 ```
 
 ```lua
-/run local a,b,c,d = GetBuildInfo(); print("SBG buildInfo: major=" .. tostring(a) .. " minor=" .. tostring(b) .. " patch=" .. tostring(c) .. " build=" .. tostring(d))
+/run local a,b,c,d = GetBuildInfo(); print("AS buildInfo: major=" .. tostring(a) .. " minor=" .. tostring(b) .. " patch=" .. tostring(c) .. " build=" .. tostring(d))
 ```
 
 ```lua
-/run print("SBG WorldFramePoint3D=" .. tostring(WorldFramePoint3D ~= nil) .. " GetUnitPosition=" .. tostring(GetUnitPosition ~= nil) .. " GetUnitFamily=" .. tostring(GetUnitFamily ~= nil) .. " UnitCreatureType=" .. tostring(UnitCreatureType ~= nil))
+/run print("AS WorldFramePoint3D=" .. tostring(WorldFramePoint3D ~= nil) .. " GetUnitPosition=" .. tostring(GetUnitPosition ~= nil) .. " GetUnitFamily=" .. tostring(GetUnitFamily ~= nil) .. " UnitCreatureType=" .. tostring(UnitCreatureType ~= nil))
 ```
 
 ```lua
-/run local px,py,pz = GetUnitPosition("player"); print("SBG playerPos:", px, py, pz); local sx,sy,beh = WorldFramePoint3D(px,py,pz); print("SBG proj:", sx, sy, beh)
+/run local px,py,pz = GetUnitPosition("player"); print("AS playerPos:", px, py, pz); local sx,sy,beh = WorldFramePoint3D(px,py,pz); print("AS proj:", sx, sy, beh)
 ```
 
 ```lua
-/run print("SBG GetNumAuras(player) returns:", select("#", GetNumAuras("player")), "values")
+/run print("AS GetNumAuras(player) returns:", select("#", GetNumAuras("player")), "values")
 ```
 
 ```lua
-/run local w,h,s = GetScreenSize(); print("SBG screen:", w, "x", h, "scale", s, "locale:", GetLocale(), "zone:", GetZoneText())
+/run local w,h,s = GetScreenSize(); print("AS screen:", w, "x", h, "scale", s, "locale:", GetLocale(), "zone:", GetZoneText())
 ```
 
 ### 12.3 Spider probe (target a spider first, ideally a small + a large one)
 
 ```lua
-/run local n = UnitName("target"); print("SBG target: name=" .. tostring(n) .. " family=" .. tostring(GetUnitFamily("target")) .. " creatureType=" .. tostring(UnitCreatureType("target")) .. " level=" .. tostring(UnitLevel("target")))
+/run local n = UnitName("target"); print("AS target: name=" .. tostring(n) .. " family=" .. tostring(GetUnitFamily("target")) .. " creatureType=" .. tostring(UnitCreatureType("target")) .. " level=" .. tostring(UnitLevel("target")))
 ```
 
 ### 12.4 Interpretation
@@ -670,43 +670,43 @@ readability.
 | `projPlayerScreen` x/y numbers, `behind=false` | world→screen projection works in this client |
 | spider probe `family=` value | the exact family string(s) for `settings.families` (risk #7) |
 
-### 12.5 Hardened probes (SBG2, nil-safe) — supersedes 12.1–12.3
+### 12.5 Hardened probes (AS2, nil-safe) — supersedes 12.1–12.3
 
 First in-client run (2026-10-13): the spider probe died with
 `attempt to call a nil value` — one of `UnitName`/`GetUnitFamily`/
 `UnitCreatureType`/`UnitLevel` is **absent** on this client — and the error
-stack revealed the modern codebase (see §2 finding). The SBG2 probes are
+stack revealed the modern codebase (see §2 finding). The AS2 probes are
 nil-safe (missing → `MISSING` / `API_MISSING`) and add modern-generation
 checks (`C_Timer`, `C_Map.PositionToScreen`, `SlashCmdList`).
 
 **Client constraint (2026-10-13):** chat `/run` is capped at **255 chars
 including `/run`**. Use the split lines below (each ≤ 223 chars, measured).
 Line A1 defines a persistent helper — re-run it after any `/reload`.
-Cleanup when done: `/run SBG2=nil`.
+Cleanup when done: `/run AS2=nil`.
 
 **Part A — environment (run A1 first, then A2–A12 in any order):**
 
 ```
-/run SBG2={p=function(k,v) print(("SBG2| %s: %s"):format(k,tostring(v))) end}
-/run local p=SBG2.p; p("lua50",select(2,_G)); p("_VERSION",_VERSION); p("t.unpack",rawget(table,"unpack")~=nil); p("t.pack",rawget(table,"pack")~=nil); p("math.huge",math.huge~=nil)
-/run local p=SBG2.p; p("WorldFramePoint3D",WorldFramePoint3D~=nil); p("GetUnitPosition",GetUnitPosition~=nil); p("GetUnitFamily",GetUnitFamily~=nil); p("UnitCreatureType",UnitCreatureType~=nil)
-/run local p=SBG2.p; p("UnitName",UnitName~=nil); p("GetUnitName",GetUnitName~=nil); p("UnitLevel",UnitLevel~=nil); p("UnitIsVisible",UnitIsVisible~=nil); p("UnitIsDead",UnitIsDead~=nil)
-/run local p=SBG2.p; p("UnitCanAttack",UnitCanAttack~=nil); p("IsPlayerUnit",IsPlayerUnit~=nil); p("GetNumAuras",GetNumAuras~=nil); p("GetUnitAura",GetUnitAura~=nil); p("GetScreenSize",GetScreenSize~=nil)
-/run local p=SBG2.p; p("C_Timer",C_Timer~=nil); p("C_Map",C_Map~=nil); p("C_Map.PosToScreen",C_Map and type(rawget(C_Map,"PositionToScreen"))=="function" or false); p("SlashCmdList",SlashCmdList~=nil)
-/run local p=SBG2.p; local a,b,c,d=GetBuildInfo(); p("buildInfo",string.format("major=%s minor=%s patch=%s build=%s",tostring(a),tostring(b),tostring(c),tostring(d)))
-/run local p=SBG2.p; if GetScreenSize then local w,h,s=GetScreenSize(); p("screen",w.."x"..h.." scale="..tostring(s)) end; p("locale",GetLocale()); p("zone",GetZoneText())
-/run local p=SBG2.p; local px,py,pz=GetUnitPosition("player"); p("playerPos",string.format("%.1f %.1f %.1f",px,py,pz))
-/run local p=SBG2.p; if WorldFramePoint3D then local px,py,pz=GetUnitPosition("player"); local sx,sy,beh=WorldFramePoint3D(px,py,pz); p("proj_player",sx.." "..sy.." "..tostring(beh)) end
-/run local p=SBG2.p; if C_Map and C_Map.PositionToScreen then local px,py,pz=GetUnitPosition("player"); local cx,cy,cb=C_Map.PositionToScreen(px,py,pz); p("proj_CMap",cx.." "..cy.." "..tostring(cb)) end
-/run local p=SBG2.p; if GetNumAuras then p("numAuras_vals",select("#",GetNumAuras("player"))) else p("numAuras_vals","API_MISSING") end
+/run AS2={p=function(k,v) print(("AS2| %s: %s"):format(k,tostring(v))) end}
+/run local p=AS2.p; p("lua50",select(2,_G)); p("_VERSION",_VERSION); p("t.unpack",rawget(table,"unpack")~=nil); p("t.pack",rawget(table,"pack")~=nil); p("math.huge",math.huge~=nil)
+/run local p=AS2.p; p("WorldFramePoint3D",WorldFramePoint3D~=nil); p("GetUnitPosition",GetUnitPosition~=nil); p("GetUnitFamily",GetUnitFamily~=nil); p("UnitCreatureType",UnitCreatureType~=nil)
+/run local p=AS2.p; p("UnitName",UnitName~=nil); p("GetUnitName",GetUnitName~=nil); p("UnitLevel",UnitLevel~=nil); p("UnitIsVisible",UnitIsVisible~=nil); p("UnitIsDead",UnitIsDead~=nil)
+/run local p=AS2.p; p("UnitCanAttack",UnitCanAttack~=nil); p("IsPlayerUnit",IsPlayerUnit~=nil); p("GetNumAuras",GetNumAuras~=nil); p("GetUnitAura",GetUnitAura~=nil); p("GetScreenSize",GetScreenSize~=nil)
+/run local p=AS2.p; p("C_Timer",C_Timer~=nil); p("C_Map",C_Map~=nil); p("C_Map.PosToScreen",C_Map and type(rawget(C_Map,"PositionToScreen"))=="function" or false); p("SlashCmdList",SlashCmdList~=nil)
+/run local p=AS2.p; local a,b,c,d=GetBuildInfo(); p("buildInfo",string.format("major=%s minor=%s patch=%s build=%s",tostring(a),tostring(b),tostring(c),tostring(d)))
+/run local p=AS2.p; if GetScreenSize then local w,h,s=GetScreenSize(); p("screen",w.."x"..h.." scale="..tostring(s)) end; p("locale",GetLocale()); p("zone",GetZoneText())
+/run local p=AS2.p; local px,py,pz=GetUnitPosition("player"); p("playerPos",string.format("%.1f %.1f %.1f",px,py,pz))
+/run local p=AS2.p; if WorldFramePoint3D then local px,py,pz=GetUnitPosition("player"); local sx,sy,beh=WorldFramePoint3D(px,py,pz); p("proj_player",sx.." "..sy.." "..tostring(beh)) end
+/run local p=AS2.p; if C_Map and C_Map.PositionToScreen then local px,py,pz=GetUnitPosition("player"); local cx,cy,cb=C_Map.PositionToScreen(px,py,pz); p("proj_CMap",cx.." "..cy.." "..tostring(cb)) end
+/run local p=AS2.p; if GetNumAuras then p("numAuras_vals",select("#",GetNumAuras("player"))) else p("numAuras_vals","API_MISSING") end
 ```
 
 **Part B — spider probe (3 lines; target a spider first, ideally a small + a large one):**
 
 ```
-/run local p=SBG2.p; local n; if UnitName then n=UnitName("target") elseif GetUnitName then n=GetUnitName("target") end; p("name",n); p("level",UnitLevel and UnitLevel("target") or "MISSING")
-/run local p=SBG2.p; if GetUnitFamily then p("family",GetUnitFamily("target") or "nil") else p("family","API_MISSING") end; if UnitCreatureType then p("ct",UnitCreatureType("target") or "nil") else p("ct","API_MISSING") end
-/run local p=SBG2.p; if GetUnitPosition then local x,y,z=GetUnitPosition("target"); if x then p("pos",string.format("%.1f %.1f %.1f",x,y,z)) else p("pos","nil/restricted") end else p("pos","API_MISSING") end
+/run local p=AS2.p; local n; if UnitName then n=UnitName("target") elseif GetUnitName then n=GetUnitName("target") end; p("name",n); p("level",UnitLevel and UnitLevel("target") or "MISSING")
+/run local p=AS2.p; if GetUnitFamily then p("family",GetUnitFamily("target") or "nil") else p("family","API_MISSING") end; if UnitCreatureType then p("ct",UnitCreatureType("target") or "nil") else p("ct","API_MISSING") end
+/run local p=AS2.p; if GetUnitPosition then local x,y,z=GetUnitPosition("target"); if x then p("pos",string.format("%.1f %.1f %.1f",x,y,z)) else p("pos","nil/restricted") end else p("pos","API_MISSING") end
 ```
 
 **Interpretation deltas vs §12.4:** any `MISSING` on `WorldFramePoint3D` is no
@@ -715,25 +715,25 @@ longer fatal if `C_Map.PosToScreen = true` (modern projection path);
 `family = API_MISSING` forces detection onto `creatureType`/`extraNames`
 (both already in the design, §3.1).
 
-### 12.6 Probe round 3 (SBG3) — confirms pivot building blocks (2026-10-13)
+### 12.6 Probe round 3 (AS3) — confirms pivot building blocks (2026-10-13)
 
 Purpose: (1) final check for any alternative projection/position API; (2)
 confirm the building blocks of the pivoted design (§3.0): cursor position,
 screen info, player-detection replacement, unit-frame availability, modern
 aura API, sound, Bindings. All lines nil-safe, each ≤ 255 chars. Run R1 first
-only if `SBG2` was cleared; then any order. R7 needs a spider targeted.
+only if `AS2` was cleared; then any order. R7 needs a spider targeted.
 
 ```
-/run local p=SBG2.p; p("C_Map.ScreenToPosition",C_Map.ScreenToPosition~=nil); p("GetCameraPosition",GetCameraPosition~=nil); p("GetUnitWorldPosition",GetUnitWorldPosition~=nil); p("GetViewingInfo",GetViewingInfo~=nil)
-/run local p=SBG2.p; p("GetCursorPosition",GetCursorPosition~=nil); p("GetEffectiveScreenInfo",GetEffectiveScreenInfo~=nil); p("UnitClass",UnitClass~=nil); p("UnitFactionGroup",UnitFactionGroup~=nil); p("UnitIsUnit",UnitIsUnit~=nil)
-/run local p=SBG2.p; p("TargetFrame",TargetFrame~=nil); p("FocusFrame",FocusFrame~=nil); p("MouseOverInfoFrame",MouseOverInfoFrame~=nil); p("PartyFrame",PartyFrame~=nil); p("MainMenuBar",MainMenuBar~=nil)
-/run local p=SBG2.p; if GetEffectiveScreenInfo then local w,h,s=GetEffectiveScreenInfo(); p("screen",w.."x"..h.." scale="..tostring(s)) end; if UnitClass then p("playerClass",UnitClass("player")) end
-/run local p=SBG2.p; p("playerFaction",UnitFactionGroup and UnitFactionGroup("player") or "API_MISSING"); p("mouseover_class",UnitClass and UnitClass("mouseover") or "n/a")
-/run local p=SBG2.p; p("C_UnitAura",C_UnitAura~=nil); p("C_UnitAura.Count",C_UnitAura and C_UnitAura.GetNumUnitAuras and "fn" or "no"); p("PlaySoundFile",PlaySoundFile~=nil); p("Bindings_table",type(Bindings)=="table")
-/run local p=SBG2.p; if C_UnitAura and C_UnitAura.GetNumUnitAuras then p("targetAuras",C_UnitAura.GetNumUnitAuras("target")) else p("targetAuras","API_MISSING") end
+/run local p=AS2.p; p("C_Map.ScreenToPosition",C_Map.ScreenToPosition~=nil); p("GetCameraPosition",GetCameraPosition~=nil); p("GetUnitWorldPosition",GetUnitWorldPosition~=nil); p("GetViewingInfo",GetViewingInfo~=nil)
+/run local p=AS2.p; p("GetCursorPosition",GetCursorPosition~=nil); p("GetEffectiveScreenInfo",GetEffectiveScreenInfo~=nil); p("UnitClass",UnitClass~=nil); p("UnitFactionGroup",UnitFactionGroup~=nil); p("UnitIsUnit",UnitIsUnit~=nil)
+/run local p=AS2.p; p("TargetFrame",TargetFrame~=nil); p("FocusFrame",FocusFrame~=nil); p("MouseOverInfoFrame",MouseOverInfoFrame~=nil); p("PartyFrame",PartyFrame~=nil); p("MainMenuBar",MainMenuBar~=nil)
+/run local p=AS2.p; if GetEffectiveScreenInfo then local w,h,s=GetEffectiveScreenInfo(); p("screen",w.."x"..h.." scale="..tostring(s)) end; if UnitClass then p("playerClass",UnitClass("player")) end
+/run local p=AS2.p; p("playerFaction",UnitFactionGroup and UnitFactionGroup("player") or "API_MISSING"); p("mouseover_class",UnitClass and UnitClass("mouseover") or "n/a")
+/run local p=AS2.p; p("C_UnitAura",C_UnitAura~=nil); p("C_UnitAura.Count",C_UnitAura and C_UnitAura.GetNumUnitAuras and "fn" or "no"); p("PlaySoundFile",PlaySoundFile~=nil); p("Bindings_table",type(Bindings)=="table")
+/run local p=AS2.p; if C_UnitAura and C_UnitAura.GetNumUnitAuras then p("targetAuras",C_UnitAura.GetNumUnitAuras("target")) else p("targetAuras","API_MISSING") end
 ```
 
-### 12.7 Probe round 4 (SBG4) — wiki-confirmed position/camera chain (2026-10-13)
+### 12.7 Probe round 4 (AS4) — wiki-confirmed position/camera chain (2026-10-13)
 
 Context: the Wiki's per-client API table (current 2026-10-06, explicit
 "Forever 1.60.1 (70235) Beta" column) lists these as **present in Forever**:
@@ -747,17 +747,17 @@ projection.
 **Run with a spider TARGETED while standing in a starting zone**
 (Tirisfal Glades qualifies). R1–R2: spider targeted. R3: no target needed.
 R4: spider targeted (re-target if it died). R5–R8: no target needed.
-Re-run R1 (`SBG2` helper) only if it was cleared.
+Re-run R1 (`AS2` helper) only if it was cleared.
 
 ```
-/run local p=SBG2.p; p("UnitCreatureFamily",UnitCreatureFamily~=nil); if UnitCreatureFamily then local n,id=UnitCreatureFamily("target"); p("fam",tostring(n).." id="..tostring(id)) end
-/run local p=SBG2.p; p("UnitCreatureID",UnitCreatureID~=nil); if UnitCreatureID then p("crid",tostring(UnitCreatureID("target"))) end
-/run local p=SBG2.p; p("UnitPosition",UnitPosition~=nil); if UnitPosition then local x,y,z,m=UnitPosition("player"); p("playerPos",tostring(x)..","..tostring(y).." z="..tostring(z).." map="..tostring(m)) end
-/run local p=SBG2.p; p("ClosestUnitPosition",ClosestUnitPosition~=nil); if UnitCreatureID and ClosestUnitPosition then local x,y,d=ClosestUnitPosition(UnitCreatureID("target")); p("closest",tostring(x)..","..tostring(y).." dist="..tostring(d)) end
-/run local p=SBG2.p; p("GetUICameraInfo",GetUICameraInfo~=nil); p("GetCameraZoom",GetCameraZoom~=nil); if GetCameraZoom then p("zoom",tostring(GetCameraZoom())) end
-/run local p=SBG2.p; p("GetCameraFOVDefaults",GetCameraFOVDefaults~=nil); if GetCameraFOVDefaults then local a,b,c=GetCameraFOVDefaults(); p("fovDef",tostring(a).."|"..tostring(b).."|"..tostring(c)) end
-/run local p=SBG2.p; if GetUICameraInfo then for i=1,5 do local ok,px,py,pz,lx,ly,lz=pcall(GetUICameraInfo,i); p("cam"..i,ok and (tostring(px)..","..tostring(py)..","..tostring(pz)) or "nil") end
-/run local p=SBG2.p; local W,H; if GetEffectiveScreenInfo then W,H=GetEffectiveScreenInfo() elseif GetScreenWidth then W,H=GetScreenWidth(),GetScreenHeight() end; p("WH",tostring(W).."x"..tostring(H))
+/run local p=AS2.p; p("UnitCreatureFamily",UnitCreatureFamily~=nil); if UnitCreatureFamily then local n,id=UnitCreatureFamily("target"); p("fam",tostring(n).." id="..tostring(id)) end
+/run local p=AS2.p; p("UnitCreatureID",UnitCreatureID~=nil); if UnitCreatureID then p("crid",tostring(UnitCreatureID("target"))) end
+/run local p=AS2.p; p("UnitPosition",UnitPosition~=nil); if UnitPosition then local x,y,z,m=UnitPosition("player"); p("playerPos",tostring(x)..","..tostring(y).." z="..tostring(z).." map="..tostring(m)) end
+/run local p=AS2.p; p("ClosestUnitPosition",ClosestUnitPosition~=nil); if UnitCreatureID and ClosestUnitPosition then local x,y,d=ClosestUnitPosition(UnitCreatureID("target")); p("closest",tostring(x)..","..tostring(y).." dist="..tostring(d)) end
+/run local p=AS2.p; p("GetUICameraInfo",GetUICameraInfo~=nil); p("GetCameraZoom",GetCameraZoom~=nil); if GetCameraZoom then p("zoom",tostring(GetCameraZoom())) end
+/run local p=AS2.p; p("GetCameraFOVDefaults",GetCameraFOVDefaults~=nil); if GetCameraFOVDefaults then local a,b,c=GetCameraFOVDefaults(); p("fovDef",tostring(a).."|"..tostring(b).."|"..tostring(c)) end
+/run local p=AS2.p; if GetUICameraInfo then for i=1,5 do local ok,px,py,pz,lx,ly,lz=pcall(GetUICameraInfo,i); p("cam"..i,ok and (tostring(px)..","..tostring(py)..","..tostring(pz)) or "nil") end
+/run local p=AS2.p; local W,H; if GetEffectiveScreenInfo then W,H=GetEffectiveScreenInfo() elseif GetScreenWidth then W,H=GetScreenWidth(),GetScreenHeight() end; p("WH",tostring(W).."x"..tostring(H))
 ```
 
 **Interpretation:**
@@ -779,29 +779,29 @@ Calibration (offline, done by maintainer with R3+R7+R8 numbers): project the
 land at bottom-center of the screen (±~10%). If it does, 3D-follow is on for
 starting zones; if not, UI-anchored covers only (time-box per risk 3).
 
-### 12.8 Probe round 5 (SBG5) — UI-anchored design building blocks (2026-10-13)
+### 12.8 Probe round 5 (AS5) — UI-anchored design building blocks (2026-10-13)
 
-The 3D path is closed (SBG4). The final probe round confirms the building
+The 3D path is closed (AS4). The final probe round confirms the building
 blocks of the UI-anchored design (§3.0): cursor position, the `mouseover`
 token (hover-shield trigger + detection through it), unit frames, player
 detection, sound, `Bindings`.
 
 **R3: hover the mouse over a spider before running it** (and keep it hovering
-while R4 runs too). R1, R2, R5, R6: no hover needed. Re-run the `SBG2` helper
+while R4 runs too). R1, R2, R5, R6: no hover needed. Re-run the `AS2` helper
 (A1) only if it was cleared.
 
 ```
-/run local p=SBG2.p; p("GetCursorPosition",GetCursorPosition~=nil); if GetCursorPosition then local x,y=GetCursorPosition(); p("cursor",tostring(x)..","..tostring(y)) end
-/run local p=SBG2.p; p("playerClass",UnitClass and tostring(UnitClass("player")) or "MISSING"); p("playerFaction",UnitFactionGroup and tostring(UnitFactionGroup("player")) or "MISSING")
-/run local p=SBG2.p; p("mouseover",tostring(UnitName("mouseover"))); if UnitCreatureFamily then local n,id=UnitCreatureFamily("mouseover"); p("hover_fam",tostring(n).." id="..tostring(id)) end
-/run local p=SBG2.p; p("mouseover_visible",tostring(UnitIsVisible("mouseover"))); p("mouseover_canattack",tostring(UnitCanAttack("mouseover")))
-/run local p=SBG2.p; p("TargetFrame",TargetFrame~=nil); p("FocusFrame",FocusFrame~=nil); p("MouseOverInfoFrame",MouseOverInfoFrame~=nil); p("PartyFrame1",PartyFrame1~=nil); p("MainMenuBar",MainMenuBar~=nil); p("UIParent",UIParent~=nil)
-/run local p=SBG2.p; p("PlaySoundFile",PlaySoundFile~=nil); p("Bindings",type(Bindings)=="table"); p("UnitIsDead_mouseover",tostring(UnitIsDead("mouseover")))
+/run local p=AS2.p; p("GetCursorPosition",GetCursorPosition~=nil); if GetCursorPosition then local x,y=GetCursorPosition(); p("cursor",tostring(x)..","..tostring(y)) end
+/run local p=AS2.p; p("playerClass",UnitClass and tostring(UnitClass("player")) or "MISSING"); p("playerFaction",UnitFactionGroup and tostring(UnitFactionGroup("player")) or "MISSING")
+/run local p=AS2.p; p("mouseover",tostring(UnitName("mouseover"))); if UnitCreatureFamily then local n,id=UnitCreatureFamily("mouseover"); p("hover_fam",tostring(n).." id="..tostring(id)) end
+/run local p=AS2.p; p("mouseover_visible",tostring(UnitIsVisible("mouseover"))); p("mouseover_canattack",tostring(UnitCanAttack("mouseover")))
+/run local p=AS2.p; p("TargetFrame",TargetFrame~=nil); p("FocusFrame",FocusFrame~=nil); p("MouseOverInfoFrame",MouseOverInfoFrame~=nil); p("PartyFrame1",PartyFrame1~=nil); p("MainMenuBar",MainMenuBar~=nil); p("UIParent",UIParent~=nil)
+/run local p=AS2.p; p("PlaySoundFile",PlaySoundFile~=nil); p("Bindings",type(Bindings)=="table"); p("UnitIsDead_mouseover",tostring(UnitIsDead("mouseover")))
 ```
 
 **Interpretation:**
 - R1 `cursor: x,y` → `GetCursorPosition` works; numbers should be within the
-  `WH` range from SBG4 (1772×1181).
+  `WH` range from AS4 (1772×1181).
 - R2 `playerClass: <class> playerFaction: <Alliance|Horde>` → player-detection
   replacement for the absent `IsPlayerUnit`.
 - R3 (mouse on a spider) `mouseover: <spider name> hover_fam: Spider id=3` →
@@ -816,9 +816,9 @@ while R4 runs too). R1, R2, R5, R6: no hover needed. Re-run the `SBG2` helper
 After this round every API the design depends on is in-client verified, and
 M2 (skeleton + load) can start immediately — it needs none of R5's answers.
 
-### 12.9 Probe round 6 (SBG6) — event availability map (2026-10-13)
+### 12.9 Probe round 6 (AS6) — event availability map (2026-10-13)
 
-SBG5 showed `CHAT_COMMAND` is **not** a registerable event on this client,
+AS5 showed `CHAT_COMMAND` is **not** a registerable event on this client,
 and the Lua `Bindings` table is absent (this client does keybindings via
 XML `<Bindings>` files — see the Spoken addon's Bindings.xml), so the
 panic-hotkey mechanism (§4.5) and any event-driven optimizations depend on
@@ -828,10 +828,10 @@ event. Run both lines in order (line 2 needs the frame from line 1; re-run
 line 1 after `/reload`).
 
 ```
-/run local p=SBG2.p; SBG2.f=CreateFrame("Frame"); for _,e in ipairs({"MOUSEOVER","UNIT_TARGET","UPDATE","PLAYER_ENTERING_WORLD","KEY_DOWN","KEY_UP"}) do local ok=pcall(SBG2.f.RegisterEvent,SBG2.f,e); p(e,ok) end
+/run local p=AS2.p; AS2.f=CreateFrame("Frame"); for _,e in ipairs({"MOUSEOVER","UNIT_TARGET","UPDATE","PLAYER_ENTERING_WORLD","KEY_DOWN","KEY_UP"}) do local ok=pcall(AS2.f.RegisterEvent,AS2.f,e); p(e,ok) end
 ```
 ```
-/run local p=SBG2.p; for _,e in ipairs({"ZONE_CHANGED_NEW_AREA","PARTY_UPDATE","RAID_UPDATE","CHAT_COMMAND","ACTIONBAR_BUTTON_UP","VARIABLES_LOADED","UNIT_AURA","PLAYER_LOGIN"}) do local ok=pcall(SBG2.f.RegisterEvent,SBG2.f,e); p(e,ok) end
+/run local p=AS2.p; for _,e in ipairs({"ZONE_CHANGED_NEW_AREA","PARTY_UPDATE","RAID_UPDATE","CHAT_COMMAND","ACTIONBAR_BUTTON_UP","VARIABLES_LOADED","UNIT_AURA","PLAYER_LOGIN"}) do local ok=pcall(AS2.f.RegisterEvent,AS2.f,e); p(e,ok) end
 ```
 
 **Interpretation:**
@@ -840,31 +840,31 @@ line 1 after `/reload`).
   fallback).
 - `PLAYER_ENTERING_WORLD: true` → proper init/lifecycle point.
 - Anything `true` is an optimization; the design's primary refresh remains
-  OnUpdate polling (PLAN.md §3.4). The frames left registered on `SBG2.f`
+  OnUpdate polling (PLAN.md §3.4). The frames left registered on `AS2.f`
   are harmless (no OnEvent scripts) but `/reload` (or re-running line 1) keeps
   things clean.
 
-**SBG6 results (2026-10-13; mouse over a spider, spider targeted):**
+**AS6 results (2026-10-13; mouse over a spider, spider targeted):**
 present = `UNIT_TARGET`, `PLAYER_ENTERING_WORLD`, `ZONE_CHANGED_NEW_AREA`,
 `VARIABLES_LOADED`, `UNIT_AURA`, `PLAYER_LOGIN`; absent = `MOUSEOVER`,
 `UPDATE`, `KEY_DOWN`, `KEY_UP`, `PARTY_UPDATE`, `RAID_UPDATE`,
 `CHAT_COMMAND`, `ACTIONBAR_BUTTON_UP`. → hover detection must poll the
 `mouseover` token; the panic hotkey cannot use `KEY_DOWN` (see §4.5); the
-driver must not rely on `RegisterEvent("UPDATE")` (see §3.4, SBG7).
+driver must not rely on `RegisterEvent("UPDATE")` (see §3.4, AS7).
 
-### 12.10 Probe round 7 (SBG7) — driver primitives (2026-10-13)
+### 12.10 Probe round 7 (AS7) — driver primitives (2026-10-13)
 
 The tick driver (§3.4) needs one last confirmation: does the *script*
 system's `OnUpdate` work (it is separate from the pruned event system), and
 which `C_Timer` methods exist? Run both lines in order (line 2 prints
-`OnUpdate_ticks: 3` about a second after `armed: true`). Re-run the `SBG2`
+`OnUpdate_ticks: 3` about a second after `armed: true`). Re-run the `AS2`
 helper first if it was cleared.
 
 ```
-/run local p=SBG2.p; p("CTimer_After",type(C_Timer and C_Timer.After)); p("CTimer_NewTimer",type(C_Timer and C_Timer.NewTimer)); p("CTimer_CancelAll",type(C_Timer and C_Timer.CancelAll))
+/run local p=AS2.p; p("CTimer_After",type(C_Timer and C_Timer.After)); p("CTimer_NewTimer",type(C_Timer and C_Timer.NewTimer)); p("CTimer_CancelAll",type(C_Timer and C_Timer.CancelAll))
 ```
 ```
-/run local p=SBG2.p; local f=CreateFrame("Frame"); f.sbgn=0; f:SetScript("OnUpdate",function(s,dt) s.sbgn=s.sbgn+1; if s.sbgn>=3 then s:SetScript("OnUpdate",nil); p("OnUpdate_ticks",s.sbgn) end end); p("armed",true)
+/run local p=AS2.p; local f=CreateFrame("Frame"); f.sbgn=0; f:SetScript("OnUpdate",function(s,dt) s.sbgn=s.sbgn+1; if s.sbgn>=3 then s:SetScript("OnUpdate",nil); p("OnUpdate_ticks",s.sbgn) end end); p("armed",true)
 ```
 
 **Interpretation:**

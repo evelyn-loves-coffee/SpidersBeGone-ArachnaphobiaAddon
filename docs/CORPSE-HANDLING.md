@@ -33,8 +33,8 @@ handler correctly releases our cover and drops the token mapping.
 
 The prior client probes found no usable enemy world-position/screen-projection
 route, and nameplate measurement was restricted. See
-[API-VERIFICATION.md](https://github.com/evelyn-loves-coffee/SpidersBeGone-ArachnaphobiaAddon/blob/main/docs/API-VERIFICATION.md) and
-[FOREVER-API-REVIEW.md](https://github.com/evelyn-loves-coffee/SpidersBeGone-ArachnaphobiaAddon/blob/main/docs/FOREVER-API-REVIEW.md). Moving the cover to UIParent
+[API-VERIFICATION.md](https://github.com/evelyn-loves-coffee/ArachnaphobiaShield/blob/main/docs/API-VERIFICATION.md) and
+[FOREVER-API-REVIEW.md](https://github.com/evelyn-loves-coffee/ArachnaphobiaShield/blob/main/docs/FOREVER-API-REVIEW.md). Moving the cover to UIParent
 without a valid position would not track a corpse as the camera moves. No
 verified public API for forcing an enemy corpse to retain its native
 nameplate was identified in this review. The map-oriented UnitPositionFrame
@@ -94,4 +94,4 @@ Live acceptance is still required: kill a tracked spider with the pointer
 elsewhere; verify the centered warning lasts 1.5 to 2 seconds even when its
 plate disappears. Kill two spiders in quick succession, test disable while
 the warning is visible, and confirm clicks and movement pass through it.
-Use `/sbg` to inspect `corpsePopup` if no visual warning appears.
+Use `/as` to inspect `corpsePopup` if no visual warning appears.
