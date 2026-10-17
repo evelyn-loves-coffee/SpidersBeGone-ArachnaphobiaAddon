@@ -40,11 +40,13 @@ local function solid(frame, file)
 	return tex
 end
 
-local function text(frame, value, size)
+local function text(frame, value, size, justify)
 	local label = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	label:SetAllPoints(frame)
 	if label.SetFont then pcall(label.SetFont, label, "Fonts\\FRIZQT__.TTF", size or 14, "") end
 	if label.SetTextColor then pcall(label.SetTextColor, label, 0.95, 0.95, 0.98, 1) end
+	-- Same guarded pattern DeathWarning.lua uses for its centered message.
+	if justify and label.SetJustifyH then pcall(label.SetJustifyH, label, justify) end
 	label:SetText(value)
 	return label
 end
@@ -112,16 +114,20 @@ local function create()
 	f:EnableMouse(true)
 	f:Hide()
 	O.background = solid(f, ASSET.bg)
-	text(region(f, 480, 30, "TOPLEFT", "TOPLEFT", 16, -12), "Arachnaphobia Shield - Covers", 19)
-	text(region(f, 600, 26, "TOPLEFT", "TOPLEFT", 20, -44), "Choose the cover image that feels comfortable for you.")
-	button(f, "Close", 70, 28, "TOPRIGHT", "TOPRIGHT", -16, -14, O.Close)
+	-- v0.4.7: the title region is centered in the 640-wide window and its
+	-- text is center-justified, so the caption sits on the window's axis.
+	O.title = region(f, 480, 30, "TOPLEFT", "TOPLEFT", (640 - 480) / 2, -12)
+	O.title.label = text(O.title, "Arachnaphobia Shield - Covers", 19, "CENTER")
+	-- v0.4.7: uniform 15px outer margins on every edge of the window.
+	text(region(f, 600, 26, "TOPLEFT", "TOPLEFT", 15, -44), "Choose the cover image that feels comfortable for you.")
+	O.closeButton = button(f, "Close", 70, 28, "TOPRIGHT", "TOPRIGHT", -15, -14, O.Close)
 	O.buttons = {}
 	for index, preset in ipairs(P.PRESETS) do
 		local id = preset.id
-		O.buttons[id] = button(f, preset.label, 230, 36, "TOPLEFT", "TOPLEFT", 20, -80 - (index - 1) * 44,
+		O.buttons[id] = button(f, preset.label, 230, 36, "TOPLEFT", "TOPLEFT", 15, -80 - (index - 1) * 44,
 			function() P.Select(id) end)
 	end
-	O.buttons.custom = button(f, "Custom image", 230, 36, "TOPLEFT", "TOPLEFT", 20, -80 - #P.PRESETS * 44,
+	O.buttons.custom = button(f, "Custom image", 230, 36, "TOPLEFT", "TOPLEFT", 15, -80 - #P.PRESETS * 44,
 		function() applyCustom() end)
 	-- Preview layout (v0.4.0): the checker is one single-texture frame;
 	-- backing and art are the two textures of ONE second frame - exactly
@@ -133,7 +139,7 @@ local function create()
 	-- cycle: created hidden, painted while hidden, shown after the window.
 	local preview = {}
 	for _, name in ipairs({ "checker", "cover" }) do
-		preview[name] = region(f, 256, 256, "TOPRIGHT", "TOPRIGHT", -35, -80)
+		preview[name] = region(f, 256, 256, "TOPRIGHT", "TOPRIGHT", -15, -80)
 		preview[name]:Hide()
 	end
 	if preview.checker.SetFrameLevel then pcall(preview.checker.SetFrameLevel, preview.checker, 51) end
@@ -142,12 +148,13 @@ local function create()
 	O.previewBase = textureOn(preview.cover)  -- PaintCover fills both below
 	O.preview = textureOn(preview.cover)
 	O.previewFrames = preview
-	O.status = text(region(f, 340, 42, "TOPRIGHT", "TOPRIGHT", -15, -342), "")
+	O.statusFrame = region(f, 340, 42, "TOPRIGHT", "TOPRIGHT", -15, -342)
+	O.status = text(O.statusFrame, "")
 	-- One line, fits the 470-wide field below: the exact prefix the validator
 	-- requires (a bare file name is the failure mode the picker keeps seeing).
-	text(region(f, 600, 24, "TOPLEFT", "TOPLEFT", 20, -384),
+	text(region(f, 600, 24, "TOPLEFT", "TOPLEFT", 15, -384),
 		"Custom image: .tga path under Interface\\AddOns\\ArachnaphobiaShield\\Custom\\", 12)
-	O.input = region(f, 470, 28, "TOPLEFT", "TOPLEFT", 20, -411, "EditBox")
+	O.input = region(f, 470, 28, "TOPLEFT", "TOPLEFT", 15, -411, "EditBox")
 	O.input.background = solid(O.input, ASSET.field)
 	O.input:SetFont("Fonts\\FRIZQT__.TTF", 12, "")
 	if O.input.SetTextColor then pcall(O.input.SetTextColor, O.input, 0.95, 0.95, 0.98, 1) end
@@ -156,8 +163,8 @@ local function create()
 	if O.input.SetTextInsets then pcall(O.input.SetTextInsets, O.input, 5, 5, 0, 0) end
 	O.input:SetScript("OnEnterPressed", applyCustom)
 	O.input:SetScript("OnEscapePressed", O.Close)
-	button(f, "Use image", 120, 28, "TOPRIGHT", "TOPRIGHT", -20, -411, applyCustom)
-	text(region(f, 600, 22, "BOTTOMLEFT", "BOTTOMLEFT", 20, 5), "Covers stay click-through. Close this window to return to play.", 12)
+	O.useButton = button(f, "Use image", 120, 28, "TOPRIGHT", "TOPRIGHT", -15, -411, applyCustom)
+	text(region(f, 600, 22, "BOTTOMLEFT", "BOTTOMLEFT", 15, 5), "Covers stay click-through. Close this window to return to play.", 12)
 	O.frame, O.creating = f, nil
 end
 

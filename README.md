@@ -4,9 +4,12 @@ Addon for **World of Warcraft Forever** (classic 1.x-line client, v1.60.1) that
 covers spider models with a nameplate-attached UI element. UI-layer only: no model
 swaps, no game-file modification.
 
-**Status: v0.4.6 — the prefilled custom field now parks the caret at the
-end of the prefix, so the user literally only types the file name.**
-v0.4.5 fixed the picker custom-path UX: the field prefills the required
+**Status: v0.4.7 — the picker window is tidied: the title is centered in
+the window and every outer margin is a uniform 15px; `/as help` now
+prints just two lines (the basics, then the advanced commands).**
+v0.4.6 parked the prefilled custom field's caret at the end of the prefix,
+so the user literally only types the file name. v0.4.5 fixed the picker
+custom-path UX: the field prefills the required
 `Interface\AddOns\ArachnaphobiaShield\Custom\` prefix, the hint line shows
 the full path (no more clipped error), and the empty `Custom\` folder ships
 in the release zip (contents stay git-ignored and un-packaged). Directory

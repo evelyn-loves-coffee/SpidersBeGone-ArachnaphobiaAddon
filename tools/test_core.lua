@@ -284,8 +284,10 @@ check(#out == 1 and out[1]:find("automatic", 1, true),
 check(ArachnaphobiaShieldSettings.nearThreshold == nil,
     "near: the retired threshold key is not resurrected")
 out = capture(function() ArachnaphobiaShield.Slash("help") end)
-check(#out == 2 and out[1]:find("enable") and out[2]:find("grow"),
-    "help: prints the supported command list")
+check(#out == 2
+    and out[1] == "AS| /as enable / disable / reset / config / cover <fox / red / blue / sage / charcoal>"
+    and out[2] == "AS| Advanced: grow N (80-120, 100 = default) / drop N / names / name X / forget X",
+    "help: prints the two simplified command lines exactly")
 
 -- ---- predicate ----------------------------------------------------------
 setUnit("t", { name = "Young Night Web Spider", level = 2, famName = "Spider", famId = 3, id = 1504 })
@@ -1215,6 +1217,14 @@ capture(function() ArachnaphobiaShield.Slash("config") end)
 flushDisplay()
 check(O.frame and O.frame:IsShown() and O.frame.mouse == true,
     "config: the explicit command opens the cover picker")
+check(O.title.points[1].anchor == "TOPLEFT" and O.title.points[1].x == (640 - 480) / 2
+    and O.title.size[1] == 480 and O.title.label.justifyH == "CENTER",
+    "picker: the title is centered in the 640-wide window")
+check(O.buttons.fox.points[1].x == 15 and O.buttons.custom.points[1].x == 15
+    and O.previewFrames.checker.points[1].x == -15 and O.previewFrames.cover.points[1].x == -15
+    and O.input.points[1].x == 15 and O.statusFrame.points[1].x == -15
+    and O.useButton.points[1].x == -15 and O.closeButton.points[1].x == -15,
+    "picker: uniform 15px outer margins (list left, preview right, field, status, buttons)")
 check(O.input.autoFocus == false and O.preview.texture[1] == P.Find("blue").path,
     "config: preview matches the saved choice without grabbing keyboard focus")
 check(O.input:GetText() == customPath,

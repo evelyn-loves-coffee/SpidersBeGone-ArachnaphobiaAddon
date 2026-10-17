@@ -17,7 +17,7 @@ Client facts (docs/PLAN.md §2, verified in-client 2026-10-13):
 ]]
 
 ArachnaphobiaShield = ArachnaphobiaShield or {}
-ArachnaphobiaShield.version = "0.4.6"
+ArachnaphobiaShield.version = "0.4.7"
 local A = ArachnaphobiaShield.Access
 
 ArachnaphobiaShield.hidden = nil  -- panic-hide seam (M4); true hides every cover
@@ -295,8 +295,8 @@ function ArachnaphobiaShield.Slash(msg)
 	elseif first == "help" then
 		-- No '|' chars in chat text: the WoW chat filter eats chat-control
 		-- sequences like |t / |h (AS11) — use ' / ' separators.
-		print("AS| /as enable / disable / reset / config - image picker / cover <fox / red / blue / sage / charcoal / custom PATH>")
-		print("AS| Advanced: grow N (80-120, 100 = default) / drop N / name X / names / forget X / debug on / debug off")
+		print("AS| /as enable / disable / reset / config / cover <fox / red / blue / sage / charcoal>")
+		print("AS| Advanced: grow N (80-120, 100 = default) / drop N / names / name X / forget X")
 	else
 		print(("AS| unknown subcommand '%s' - /as help for usage"):format(first))
 	end
