@@ -3,9 +3,10 @@ ArachnaphobiaShield = ArachnaphobiaShield or {}
 local P = {}
 ArachnaphobiaShield.Appearance = P
 local ROOT = "Interface\\AddOns\\ArachnaphobiaShield\\"
--- Custom artwork lives in the addon's own Custom folder. It is git-ignored
--- (ArachnaphobiaShield/Custom/) and never packaged (tools/package_addon.py ships
--- an explicit file list), so personal images stay out of releases.
+-- Custom artwork lives in the addon's own Custom folder. The empty folder
+-- ships in the release zip (fresh installs get it); its contents are
+-- git-ignored and never packaged (tools/package_addon.py ships an explicit
+-- file list), so personal images stay out of releases.
 P.CUSTOM_ROOT = "Interface\\AddOns\\ArachnaphobiaShield\\Custom\\"
 P.PRESETS = {
 	{ id = "fox", label = "Fox", path = ROOT .. "cover.tga" },
@@ -62,7 +63,7 @@ function P.Select(id, customPath)
 	if id == "custom" then
 		path = P.CustomPath(customPath or (ArachnaphobiaShieldSettings or {}).customCover)
 		if not path then
-			return false, "Use a local .tga path under Interface\\AddOns\\ArachnaphobiaShield\\Custom\\"
+			return false, "Rejected: use a local .tga path under the addon's Custom folder (hint above the field)."
 		end
 	elseif not P.Find(id) then
 		return false, "Choose fox / red / blue / sage / charcoal / custom"

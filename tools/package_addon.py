@@ -74,6 +74,9 @@ def main():
         for name in ("config_preview.png", "cover_choices.png"):
             source = root / "docs" / "art" / name
             archive.write(source, "ArachnaphobiaShield/docs/art/" + name)
+        # Fresh installs get the (empty) custom folder; its contents are
+        # git-ignored and never packaged (explicit file list above).
+        archive.writestr("ArachnaphobiaShield/Custom/", b"")
 
     review = root / "dist" / f"install-check-{version}"
     assert review.resolve().is_relative_to(root.resolve())
@@ -89,6 +92,9 @@ def main():
     for source in sources:
         packaged = review / "ArachnaphobiaShield" / source.name
         assert packaged.read_bytes() == source.read_bytes(), source.name
+    # The custom folder ships empty; personal art never enters a release.
+    assert (review / "ArachnaphobiaShield" / "Custom").is_dir()
+    assert next((review / "ArachnaphobiaShield" / "Custom").iterdir(), None) is None
     readme = (review / "ArachnaphobiaShield" / "README.md").read_text(encoding="utf-8")
     assert "GrasHopper42" in readme and "nospider-arachnophobia-mode" in readme
     assert (review / "ArachnaphobiaShield" / "LICENSE.txt").read_bytes() == (root / "LICENSE").read_bytes()

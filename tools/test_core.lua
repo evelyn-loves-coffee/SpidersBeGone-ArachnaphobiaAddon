@@ -1213,6 +1213,8 @@ check(O.frame and O.frame:IsShown() and O.frame.mouse == true,
     "config: the explicit command opens the cover picker")
 check(O.input.autoFocus == false and O.preview.texture[1] == P.Find("blue").path,
     "config: preview matches the saved choice without grabbing keyboard focus")
+check(O.input:GetText() == customPath,
+    "config: the saved custom path prefills the field on open")
 check(O.background.texture[1] == "Interface\\AddOns\\ArachnaphobiaShield\\picker-bg.tga"
     and O.buttons.fox.background.texture[1] == "Interface\\AddOns\\ArachnaphobiaShield\\picker-btn.tga"
     and O.input.background.texture[1] == "Interface\\AddOns\\ArachnaphobiaShield\\picker-field.tga",
@@ -1233,8 +1235,10 @@ check(P.Current().id == "custom" and O.input.focusCleared and O.preview.texture[
     "config: custom input applies on Enter and releases focus")
 O.input:SetText("https://example.org/flower.tga")
 O.buttons.custom.scripts.OnClick()
-check(P.Current().id == "custom" and O.status.value:find("Use a local") ~= nil,
-    "config: invalid custom input explains the expected local path")
+check(P.Current().id == "custom" and O.status.value:find("Rejected: use a local .tga") ~= nil,
+    "config: invalid custom input explains the expected local path without clipping")
+check(O.status.value:find("AddOns") == nil,
+    "config: the rejection message holds no unbreakable path word (it clips)")
 O.input.scripts.OnEscapePressed()
 check(not O.frame:IsShown() and C.ShownCount() == 0,
     "config: Escape closes the editor while disabled covers remain hidden")
@@ -1331,8 +1335,8 @@ check(ArachnaphobiaShieldSettings.autoTrack == nil and ArachnaphobiaShieldSettin
 check(ArachnaphobiaShield.debug == false and ArachnaphobiaShield.autoSuspended == false
     and ArachnaphobiaShield.trackFailures == 0 and ArachnaphobiaShield.tickErrors == 0,
     "reset: runtime pause and debug state follow the restored defaults")
-check(O.input:GetText() == "" and O.preview.texture[1] == P.PRESETS[1].path
-    and O.preview.tint[4] == 1, "reset: an open picker refreshes to the defaults")
+check(O.input:GetText() == P.CUSTOM_ROOT and O.preview.texture[1] == P.PRESETS[1].path
+    and O.preview.tint[4] == 1, "reset: an open picker refreshes and prefills the custom prefix")
 O.Close()
 flushDisplay()
 local resetSlot = ArachnaphobiaShield.track.nameplate1

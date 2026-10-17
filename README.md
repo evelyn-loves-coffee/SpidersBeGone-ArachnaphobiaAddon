@@ -4,10 +4,13 @@ Addon for **World of Warcraft Forever** (classic 1.x-line client, v1.60.1) that
 covers spider models with a nameplate-attached UI element. UI-layer only: no model
 swaps, no game-file modification.
 
-**Status: v0.4.4 — close ceiling raised x2.6 → x3.0 (legs at extreme close
-range); the 75-85 UI near ramp is validated in-game (far `73*1.00`, close
-`91*2.60` flat), live re-validation belongs on the partner's test
-machine.** In-game debug capture (2026-10-17) showed the client clamps far
+**Status: v0.4.5 — picker custom-path UX: the field prefills the required
+`Interface\AddOns\ArachnaphobiaShield\Custom\` prefix, the hint line shows
+the full path (no more clipped error), and the empty `Custom\` folder ships
+in the release zip (contents stay git-ignored and un-packaged).** v0.4.4
+raised the close ceiling x2.6 → x3.0 (legs at extreme close range); the
+75-85 UI near ramp is validated in-game (far `73*1.00`, close `91*3.00`
+flat). In-game debug capture (2026-10-17) showed the client clamps far
 nameplates at **73 UI** and grows them to ~90 on approach - both earlier
 knees (30, then 60) sat *below* the client's minimum and boosted even far
 plates (x2.14 at the 73 clamp). v0.4.3 moved the ramp to 75-85 UI so it
@@ -230,14 +233,14 @@ The picker has **no file browser and shows no directory listing, by design**:
 the addon never enumerates the game's filesystem. You type the exact path of
 a TGA that already sits inside the game folder.
 
-**1. Put the image in the addon's custom folder.** Create
-`Interface\AddOns\ArachnaphobiaShield\Custom\` and put a `.tga` file in it, e.g.
+**1. Put the image in the addon's custom folder.** The `Custom\` folder
+ships with the addon (empty); put a `.tga` file in it, e.g.
 `Interface\AddOns\ArachnaphobiaShield\Custom\flower.tga`. A plain 24-bit TGA
 always works; 32-bit RGBA TGA (with real transparency) works too. Square
 images look best — the image is scaled into the square cover box without
-cropping. The folder is git-ignored and never ships in the release zip;
+cropping. The folder's *contents* are git-ignored and never packaged;
 when updating the addon, extract the zip **over** the existing folder (or
-re-copy your images) so the folder survives.
+re-copy your images) so your images survive.
 
 On the partner's test machine the AddOns folder is
 `.../World of Warcraft/_classic_beta_/Interface/AddOns/` (Wine prefix;

@@ -77,7 +77,11 @@ function O.Refresh()
 		end
 	end
 	O.RefreshPreview()
-	O.input:SetText((ArachnaphobiaShieldSettings or {}).customCover or "")
+	local saved = (ArachnaphobiaShieldSettings or {}).customCover or ""
+	-- Prefill the required prefix when no custom path is saved yet: the
+	-- validator only accepts the full game-relative path, and a bare file
+	-- name is the failure mode the picker keeps seeing.
+	O.input:SetText(saved == "" and P.CUSTOM_ROOT or saved)
 end
 
 local function applyCustom()
@@ -135,7 +139,10 @@ local function create()
 	O.preview = textureOn(preview.cover)
 	O.previewFrames = preview
 	O.status = text(region(f, 340, 42, "TOPRIGHT", "TOPRIGHT", -15, -342), "")
-	text(region(f, 600, 24, "TOPLEFT", "TOPLEFT", 20, -384), "Custom image: local addon texture path", 13)
+	-- One line, fits the 470-wide field below: the exact prefix the validator
+	-- requires (a bare file name is the failure mode the picker keeps seeing).
+	text(region(f, 600, 24, "TOPLEFT", "TOPLEFT", 20, -384),
+		"Custom image: .tga path under Interface\\AddOns\\ArachnaphobiaShield\\Custom\\", 12)
 	O.input = region(f, 470, 28, "TOPLEFT", "TOPLEFT", 20, -411, "EditBox")
 	O.input.background = solid(O.input, ASSET.field)
 	O.input:SetFont("Fonts\\FRIZQT__.TTF", 12, "")

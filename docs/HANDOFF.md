@@ -129,8 +129,9 @@ a busy pattern hides the outline that the fade would otherwise reveal.
   32-bit packaging invariant (transparent corner, opaque center) is
   unchanged and still enforced.
 - **The custom-image path is strict and AS-associated.** Custom textures
-  must live under `Interface\AddOns\ArachnaphobiaShield\Custom\` (git-ignored,
-  never packaged). The old "anywhere under `Interface\AddOns\`" validation
+  must live under `Interface\AddOns\ArachnaphobiaShield\Custom\` (the empty
+  folder ships in the release zip; its contents are git-ignored and never
+  packaged). The old "anywhere under `Interface\AddOns\`" validation
   is gone, and legacy `MyCovers` selections fall back to the fox on load.
 - **The navy backing is a string-path texture.** The numeric
   `SetTexture(r, g, b, a)` is a silent no-op on this client (same evidence

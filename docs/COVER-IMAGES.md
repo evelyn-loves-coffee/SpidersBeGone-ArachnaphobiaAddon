@@ -81,18 +81,21 @@ example:
 <game folder>/Interface/AddOns/ArachnaphobiaShield/Custom/flower.tga
 ```
 
-Then paste its game-relative path into the picker and click **Use image**,
-or enter:
+Then open the picker, keep the prefilled
+`Interface\AddOns\ArachnaphobiaShield\Custom\` prefix, add the file name and
+click **Use image** (the field prefills the required prefix since v0.4.5; a
+bare file name without the prefix is rejected), or enter:
 
 ```text
 /as cover custom Interface\AddOns\ArachnaphobiaShield\Custom\flower.tga
 ```
 
 Since v0.3.8 the validated path is strict: a custom image must live under
-`Interface\AddOns\ArachnaphobiaShield\Custom\`. The folder is created by you,
-is git-ignored, and never ships in the release zip, so personal images
-stay outside addon updates; when updating, extract the zip over the
-existing folder (or re-copy your images). Legacy `MyCovers` paths from
+`Interface\AddOns\ArachnaphobiaShield\Custom\`. The empty folder ships in the
+release zip (fresh installs get it since v0.4.5); its contents are
+git-ignored and never packaged, so personal images stay outside addon
+updates. When updating, extract the zip over the existing folder (or
+re-copy your images) so your images survive. Legacy `MyCovers` paths from
 older versions are rejected on load and the selection falls back to the
 fox. `/as cover custom` reselects the last saved custom path. Choose a
 bundled preset at any time to switch back.
