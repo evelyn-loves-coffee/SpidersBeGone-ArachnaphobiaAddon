@@ -4,8 +4,12 @@ Addon for **World of Warcraft Forever** (classic 1.x-line client, v1.60.1) that
 covers spider models with a nameplate-attached UI element. UI-layer only: no model
 swaps, no game-file modification.
 
-**Status: v0.4.0 — picker preview fix, percentage sizing, near levels;**
-**live validation belongs on the partner's test machine.** v0.4.0 fixes the
+**Status: v0.4.1 — automatic near-field boost (no setting); live
+validation belongs on the partner's test machine.** v0.4.1 retires the
+`/as near` level: the boost is now computed automatically every 10 Hz tick
+as a smooth ramp of the nameplate's apparent width (none at/under 30 UI px,
+full `x2.6` from 80 up - just below the measured close-range band, so the
+cover is constant at close range). v0.4.0 fixed the
 blank `/as config` preview (the checker, backing and art now follow the
 in-game cover's one-frame layout and show cycle) and simplifies tuning:
 `/as grow` takes a percentage (`100` = default, allowed `80`–`120`), `/as
@@ -54,7 +58,7 @@ for the historical design and client-probe records.
 Extract the fixed ZIP and replace the `ArachnaphobiaShield/` folder in your client's
 `Interface/AddOns/` directory, then log in or `/reload`. The `.toc` must be at
 `Interface/AddOns/ArachnaphobiaShield/ArachnaphobiaShield.toc`, without an extra nested
-repository folder. `/as` should report **v0.4.0**.
+repository folder. `/as` should report **v0.4.1**.
 
 Choose your cover with **`/as config`**. The default is the supplied fox
 illustration on a navy-toned camouflage squircle card; alternatives are
@@ -78,19 +82,19 @@ the game can move a nameplate away from the model; this client exposes no usable
 world-to-screen projection to correct that independently. Exact model coverage
 still needs an in-game check while moving, rotating the camera, and zooming.
 
-**Near-field boost:** the client holds nameplate apparent size in a narrow
-band while the model keeps growing as the camera approaches, so a
-plate-proportional cover under-covers close spiders (legs showing). True
-camera distance is unmeasurable on this client (every position API is
-absent), so the boost is not graded by distance: when a plate's apparent
-width reaches the selected level's threshold, its cover is multiplied by
-the near-field boost (`2.6`). `/as near` takes a whole number `0`–`3`
-(default `0` = off): **1** = only when the spider is right in front of the
-camera (apparent width ≥ 80), **2** = ≥ 30, **3** = ≥ 10 (boosts from
-farther away). The level-1 threshold sits just below the two measured
-close-range apparent widths (87–113 UI units, calibrated from 2026-10-16
-screenshots at 1.205 px/UI). Fine-tune with `/as debug on` and the
-`AS| near:` line.
+**Near-field boost (automatic since v0.4.1):** the client holds nameplate
+apparent size in a narrow band while the model keeps growing as the camera
+approaches, so a plate-proportional cover under-covers close spiders (legs
+showing). True camera distance is unmeasurable on this client (every
+position API is absent), so the boost is not graded by distance: every
+10 Hz tick multiplies the tracked size by a smooth ramp of the plate's
+apparent width - none at/under 30 UI px, ramping up to the near-field
+boost (`x2.6`) at/above 80 UI px. The 80 knee sits just below the two
+measured close-range apparent widths (87–113 UI units, calibrated from
+2026-10-16 screenshots at 1.205 px/UI), so the boost is constant across
+the whole band the client clamps to. There is no setting to change it
+(`/as near` is retired); verify with `/as debug on` and the `AS| near:`
+line (apparent width and computed factor per plate).
 
 **Known limitation:** when the camera is very close, the client clamps the
 nameplate itself (edge/stacking), the cover follows the plate, and no
@@ -160,7 +164,6 @@ review and Classic filtering rules are in [docs/DATA-SOURCES.md](docs/DATA-SOURC
 | `/as toggle` | switch between enabled tracking and disabled covers |
 | `/as grow [N]` | cover size as a **percentage** of the nameplate width, whole number `80`–`120`, `100` = default |
 | `/as drop [N]` | how far below the nameplate it sits (`0`–`4`, default `0.5` — calibrated in game 2026-10-16) |
-| `/as near [N]` | near-field boost level, whole number `0`–`3`: `0` = off, `1` = apparent width ≥ 80 (closest only), `2` = ≥ 30, `3` = ≥ 10 (boost ×`2.6`) |
 | `/as name <name>` | "cover this one too": add an **exact** creature name (spaces allowed) |
 | `/as names` | list the names you added |
 | `/as forget <name>` | remove one you added |

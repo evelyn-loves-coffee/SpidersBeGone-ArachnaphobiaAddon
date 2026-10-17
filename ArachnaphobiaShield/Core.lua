@@ -17,7 +17,7 @@ Client facts (docs/PLAN.md §2, verified in-client 2026-10-13):
 ]]
 
 ArachnaphobiaShield = ArachnaphobiaShield or {}
-ArachnaphobiaShield.version = "0.4.0"
+ArachnaphobiaShield.version = "0.4.1"
 local A = ArachnaphobiaShield.Access
 
 ArachnaphobiaShield.hidden = nil  -- panic-hide seam (M4); true hides every cover
@@ -42,7 +42,7 @@ ArachnaphobiaShield.loadSnapshot = { settingsPresent = (ArachnaphobiaShieldSetti
 -- ---------------------------------------------------------------- settings
 local DEFAULTS = {
 	-- Schema 4 removes all screen layouts and input-taking cover settings.
-	version = 4,
+	version = 5,
 	enabled = true,
 	coverStyle = "fox",
 	customCover = "",
@@ -68,21 +68,21 @@ local DEFAULTS = {
 	-- inside the cover with only minimal nameplate overlap.
 	drop = 0.5,
 	trackRelease = 0.5, -- seconds a cover survives losing its plate (anti-flicker)
-	-- Near-field boost. The client holds nameplate APPARENT size in a narrow
-	-- band while the model keeps growing as the camera approaches, so the
-	-- calibrated plate-proportional cover under-covers close spiders (legs
-	-- showing - owner screenshot 2026-10-16). True camera distance is
-	-- unmeasurable on this client (every position API absent, see
-	-- docs/API-VERIFICATION.md); the near band is detected on the one
-	-- distance signal the plate does expose: its apparent width
-	-- (GetWidth x GetEffectiveScale, in UI-scale px). At/above nearThreshold
-	-- the plate is saturated next to the model and the tracked size is
-	-- multiplied by nearBoost. v0.4.0: /as near takes a level 0-3
-	-- (0 = off; 1 -> 80, 2 -> 30, 3 -> 10 UI apparent width). Level 1 sits
-	-- just below the two measured close-range apparent widths (87-113 UI,
-	-- 1.205 px/UI calibration, 2026-10-16 screenshots); levels 2 and 3
-	-- reach farther. Fine-tune with /as debug on and the 'AS| near:' line.
-	nearThreshold = 0,
+	-- Near-field boost (v0.4.1: automatic, no config value). The client
+	-- holds nameplate APPARENT size in a narrow band while the model keeps
+	-- growing as the camera approaches, so the calibrated plate-proportional
+	-- cover under-covers close spiders (legs showing - owner screenshot
+	-- 2026-10-16). True camera distance is unmeasurable on this client
+	-- (every position API absent, see docs/API-VERIFICATION.md); the only
+	-- distance signal the plate exposes is its apparent width (GetWidth x
+	-- GetEffectiveScale, in UI-scale px). Every 10 Hz tick multiplies the
+	-- tracked size by nearBoostFor(apparent): 1.0 at/under the ramp's low
+	-- knee (30 UI), smoothstepping to nearBoost at/above the high knee
+	-- (80 UI). The high knee sits below the measured close-range apparent
+	-- widths (87-113 UI, 1.205 px/UI calibration, 2026-10-16 screenshots)
+	-- so the boost is constant across the whole band the client clamps to
+	-- - the cover cannot "breathe". Verify with /as debug on and the
+	-- 'AS| near:' line (apparent width and computed factor per plate).
 	nearBoost = 2.6,
 	debug = false,
 }
@@ -111,7 +111,7 @@ local function EnsureSettings()
 	end
 	-- Purge retired fields for every character at once. A late-loaded save
 	-- must not restore an input-taking mode or any screen-positioned cover.
-	for _, key in ipairs({ "autoTrack", "stickyCovers", "parkCount", "arrange", "covers", "color" }) do
+	for _, key in ipairs({ "autoTrack", "stickyCovers", "parkCount", "arrange", "covers", "color", "nearThreshold" }) do
 		s[key] = nil
 	end
 	ArachnaphobiaShield.Appearance.Normalize(s)
@@ -211,29 +211,10 @@ function ArachnaphobiaShield.Slash(msg)
 		ArachnaphobiaShieldSettings.drop = v
 		print(("AS| drop = %.2f"):format(v))
 	elseif first == "near" then
-		-- v0.4.0: near-field boost LEVEL, not a raw threshold. The plate's
-		-- apparent width (UI-scale px, from the 'AS| near:' debug line) is
-		-- compared against the level's threshold: 0 = off, 1 = 80 (right in
-		-- front of the camera - below the two measured close-range values,
-		-- 87-113 UI), 2 = 30, 3 = 10 (boosts from farther away).
-		local v = tonumber(string.match(msg or "", "^%s*%S+%s+(%S+)"))
-		if not v then
-			print(("AS| near = %s (levels: 0 = off, 1 = 80, 2 = 30, 3 = 10 UI apparent width)")
-				:format(tostring(ArachnaphobiaShieldSettings.nearThreshold)))
-			return
-		end
-		local iv = math.floor(v + 0.5)
-		if iv ~= v or iv < 0 or iv > 3 then
-			print("AS| near: expected a whole number 0-3 (0 = off)")
-			return
-		end
-		local levels = { [0] = 0, [1] = 80, [2] = 30, [3] = 10 }
-		ArachnaphobiaShieldSettings.nearThreshold = levels[iv]
-		if iv == 0 then
-			print("AS| near = 0 (off)")
-		else
-			print(("AS| near = %d (boost when apparent width >= %d; 0 = off)"):format(iv, levels[iv]))
-		end
+		-- v0.4.1: the boost is computed automatically every tick from the
+		-- plate's apparent width (see nearBoostFor); the level config is
+		-- retired.
+		print("AS| near: the boost is automatic now (it ramps with apparent width - watch the 'AS| near:' line via /as debug on); there is no setting to change")
 	elseif first == "debug" then
 		local a = string.match(msg or "", "^%s*debug%s+(%S+)") or ""
 		if a == "on" or a == "off" then ArachnaphobiaShieldSettings.debug = (a == "on") end
@@ -304,7 +285,7 @@ function ArachnaphobiaShield.Slash(msg)
 		-- No '|' chars in chat text: the WoW chat filter eats chat-control
 		-- sequences like |t / |h (AS11) — use ' / ' separators.
 		print("AS| /as enable / disable / reset / config - image picker / cover <fox / red / blue / sage / charcoal / custom PATH>")
-		print("AS| Advanced: grow N (80-120, 100 = default) / drop N / near 0-3 (0 = off) / name X / names / forget X / debug on / debug off")
+		print("AS| Advanced: grow N (80-120, 100 = default) / drop N / name X / names / forget X / debug on / debug off")
 	else
 		print(("AS| unknown subcommand '%s' - /as help for usage"):format(first))
 	end
@@ -344,10 +325,9 @@ function ArachnaphobiaShield.Selftest()
 			if ArachnaphobiaShield.Cover.IsAllocated(slot) then tracked = tracked + 1 end
 		end
 	end
-	-- v0.4.0: report the same units the commands accept (grow %, near level).
+	-- v0.4.1: report the same units the commands accept (grow %).
 	local growPct = math.floor((tonumber(s.trackScale) or 1.0) * 100 + 0.5)
-	local levelNames = { [0] = "off", [80] = "1", [30] = "2", [10] = "3" }
-	local nearLabel = levelNames[s.nearThreshold] or ("custom=" .. tostring(s.nearThreshold))
+	local nearLabel = ("auto(x%.1f)"):format(tonumber(s.nearBoost) or 2.6)
 	print(("AS| mode=tracking tracked=%d grow=%d%% drop=%s near=%s | covers shown=%d/%d | fallbackSize=%s | limited=%s paused=%s"):format(
 		tracked, growPct,
 		tostring(s.drop), nearLabel,
@@ -506,6 +486,25 @@ local function plateSize(w, ps, ourScale, grow, fallback)
 	return math.max(MIN_TRACK * toLocal, math.min(MAX_TRACK * toLocal, size))
 end
 
+-- Near-field boost as a continuous function of the plate's apparent width
+-- (v0.4.1; the /as near level config is retired). Returns 1.0 at/under
+-- NEAR_RAMP_LO and smoothsteps to the nearBoost ceiling at/above
+-- NEAR_RAMP_HI. The high knee (80 UI) sits below the measured close-range
+-- band (87-113 UI, 2026-10-16 screenshots at 1.205 px/UI), so the boost
+-- is flat across the band the client clamps to - no cover "breathing" at
+-- close range. Smoothstep keeps the slope zero at both knees, so the size
+-- change starts and ends gently while approaching.
+local NEAR_RAMP_LO, NEAR_RAMP_HI = 30, 80
+local function nearBoostFor(apparent, ceiling)
+	local b = type(ceiling) == "number" and ceiling or 2.6
+	if b <= 1 then return 1.0 end
+	if type(apparent) ~= "number" or apparent <= NEAR_RAMP_LO then return 1.0 end
+	local x = (apparent - NEAR_RAMP_LO) / (NEAR_RAMP_HI - NEAR_RAMP_LO)
+	if x >= 1 then return b end
+	x = x * x * (3 - 2 * x)
+	return 1 + (b - 1) * x
+end
+
 function ArachnaphobiaShield.OurScale()
 	local ou = 1
 	if UIParent and type(UIParent.GetEffectiveScale) == "function" then
@@ -554,7 +553,6 @@ function ArachnaphobiaShield.TrackTick()
 	local t = ArachnaphobiaShield.track
 	local grow = tonumber(s.trackScale) or 1.0
 	local dropK = tonumber(s.drop) or 0.5
-	local nearT = tonumber(s.nearThreshold) or 0
 	local nearB = tonumber(s.nearBoost) or 2.6
 	local grace = math.max(1, math.floor(((tonumber(s.trackRelease) or 0.5)
 		/ tickInterval) + 0.5))
@@ -590,14 +588,12 @@ function ArachnaphobiaShield.TrackTick()
 						local w, ps = plateReads(plate)
 						local apparent = (type(w) == "number" and w > 0
 							and type(ps) == "number" and ps > 0) and (w * ps) or nil
-						local growK = grow
-						if nearT > 0 and apparent ~= nil and apparent >= nearT then
-							growK = grow * nearB
-						end
-						local size = plateSize(w, ps, ourScale, growK, C.Size())
+						local boost = nearBoostFor(apparent, nearB)
+						local size = plateSize(w, ps, ourScale, grow * boost, C.Size())
 						if nearDbg then
 							nearDbg[#nearDbg + 1] = token .. "="
 								.. (apparent and ("%.1f"):format(apparent) or "?")
+								.. ("*%.2f"):format(boost)
 						end
 						C.Resize(slot, size, size)
 						-- Models hang BELOW their nameplate, hence the drop.
@@ -621,7 +617,8 @@ function ArachnaphobiaShield.TrackTick()
 	end
 
 	-- Calibration readout (throttled to 1/second): the plate's apparent
-	-- width per tracked spider, for choosing the near-field threshold.
+	-- width per tracked spider plus the computed boost factor, for tuning
+	-- the near ramp.
 	if nearDbg and #nearDbg > 0 then
 		local now = GetTime()
 		if now - (ArachnaphobiaShield.nearDbgAt or 0) >= 1 then

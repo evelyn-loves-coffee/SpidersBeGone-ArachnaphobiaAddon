@@ -183,19 +183,22 @@ a busy pattern hides the outline that the fade would otherwise reveal.
 ## Settings and calibration
 
 Schema 4 deletes `covers`, `parkCount`, `arrange`, `autoTrack`, `stickyCovers`
-and the obsolete color field. `opacity` (added in v0.3.2) is retired in
+and the obsolete color field; schema 5 (v0.4.1) additionally deletes the
+retired `nearThreshold`. `opacity` (added in v0.3.2) is retired in
 v0.3.8 and dropped on load, because the client's distance fade makes it a
 no-op in practice; the enabled preference, selected image, custom path,
 extra names and tracking calibration are preserved, and legacy
 `MyCovers` custom paths fall back to the fox. Migration
 runs both at script load and the actual SavedVariables restore point.
 
-Defaults: `trackScale=1.6`, `drop=0.5`, `nearThreshold=0` (off), `nearBoost=2.6`,
+Defaults: `trackScale=1.0`, `drop=0.5`, `nearBoost=2.6`,
 fallback `coverSize=96`. The drop was calibrated on the partner's Tirisfal
-test round. Near-field boost uses accessible apparent plate width, not
-unavailable creature distance. To calibrate it, debug on, approach a spider,
-read the `AS| near:` values and choose `/as near N`. Do not change the
-sizing model without live measurements. Nameplate stacking/clamping can
+test round. The near-field boost (automatic since v0.4.1) uses accessible
+apparent plate width, not unavailable creature distance: a smooth ramp on
+apparent width (none at/under 30 UI px, full `nearBoost` at/above 80 UI px,
+flat across the measured 87–113 UI close band). Debug on, approach a
+spider, and read the `AS| near:` line (apparent width and computed factor)
+to verify. Do not change the sizing model without live measurements. Nameplate stacking/clamping can
 still move a cover away from the body, and very close models can extend
 beyond a cover. No UI-layer workaround for missing world projection is used.
 

@@ -243,8 +243,8 @@ local function capture(fn)
 end
 
 -- ---- settings and commands --------------------------------------------
-check(ArachnaphobiaShieldSettings.version == 4 and ArachnaphobiaShieldSettings.enabled == true,
-    "upgrade: schema 4 repairs invalid enabled state")
+check(ArachnaphobiaShieldSettings.version == 5 and ArachnaphobiaShieldSettings.enabled == true,
+    "upgrade: schema 5 repairs invalid enabled state")
 check(ArachnaphobiaShieldSettings.covers == nil and ArachnaphobiaShieldSettings.parkCount == nil and ArachnaphobiaShieldSettings.arrange == nil,
     "upgrade: all characters' old cover layouts and input modes are removed")
 check(ArachnaphobiaShieldSettings.autoTrack == nil and ArachnaphobiaShieldSettings.stickyCovers == nil,
@@ -255,7 +255,7 @@ local out = capture(function() ArachnaphobiaShield.Slash("") end)
 check(#out == 3 and out[1]:find("WoW 1%.60%.1") and out[3]:find("mode=tracking"),
     "status: reports client build and tracking mode")
 
--- ---- /as grow / /as near: v0.4.0 percentage and level semantics --------
+-- ---- /as grow / /as near: v0.4.1 percentage and automatic near --------
 out = capture(function() ArachnaphobiaShield.Slash("grow 100") end)
 check(#out == 1 and out[1]:find("grow = 100%", 1, true) and ArachnaphobiaShieldSettings.trackScale == 1.0,
     "grow: 100 is the default and stores a 1.0 multiplier")
@@ -271,22 +271,14 @@ out = capture(function() ArachnaphobiaShield.Slash("grow abc") end)
 check(#out == 1 and out[1]:find("grow = 120%", 1, true), "grow: non-numeric input reports the current value")
 out = capture(function() ArachnaphobiaShield.Slash("grow") end)
 check(#out == 1 and out[1]:find("grow = 120%", 1, true), "grow: no argument reports the current percentage")
-out = capture(function() ArachnaphobiaShield.Slash("near 1") end)
-check(out[1]:find("near = 1 ") and ArachnaphobiaShieldSettings.nearThreshold == 80, "near: level 1 stores threshold 80")
-out = capture(function() ArachnaphobiaShield.Slash("near 2") end)
-check(ArachnaphobiaShieldSettings.nearThreshold == 30, "near: level 2 stores threshold 30")
-out = capture(function() ArachnaphobiaShield.Slash("near 3") end)
-check(ArachnaphobiaShieldSettings.nearThreshold == 10, "near: level 3 stores threshold 10")
-out = capture(function() ArachnaphobiaShield.Slash("near 0") end)
-check(ArachnaphobiaShieldSettings.nearThreshold == 0, "near: level 0 turns the boost off")
-for _, bad in ipairs({ "4", "-1", "1.5" }) do
-    out = capture(function() ArachnaphobiaShield.Slash("near " .. bad) end)
-    check(#out == 1 and out[1]:find("whole number 0-3", 1, true), "near rejects: " .. bad)
-end
-out = capture(function() ArachnaphobiaShield.Slash("near abc") end)
-check(#out == 1 and out[1]:find("near = 0"), "near: non-numeric input reports the current state")
 out = capture(function() ArachnaphobiaShield.Slash("near") end)
-check(#out == 1 and out[1]:find("near = 0"), "near: no argument reports the current level state")
+check(#out == 1 and out[1]:find("automatic", 1, true),
+    "near: reports the boost is automatic now")
+out = capture(function() ArachnaphobiaShield.Slash("near 2") end)
+check(#out == 1 and out[1]:find("automatic", 1, true),
+    "near: the retired level argument no longer stores a threshold")
+check(ArachnaphobiaShieldSettings.nearThreshold == nil,
+    "near: the retired threshold key is not resurrected")
 out = capture(function() ArachnaphobiaShield.Slash("help") end)
 check(#out == 2 and out[1]:find("enable") and out[2]:find("grow"),
     "help: prints the supported command list")
@@ -434,7 +426,7 @@ event = "VARIABLES_LOADED"
 ArachnaphobiaShield.eventFrame.scripts.OnEvent()
 event = nil
 flushDisplay()
-check(ArachnaphobiaShieldSettings.version == 4 and ArachnaphobiaShieldSettings.covers == nil
+check(ArachnaphobiaShieldSettings.version == 5 and ArachnaphobiaShieldSettings.covers == nil
     and ArachnaphobiaShieldSettings.parkCount == nil and ArachnaphobiaShieldSettings.arrange == nil,
     "upgrade: late-loaded saved layouts and arrange=true are purged across characters")
 check(ArachnaphobiaShieldSettings.enabled == false and ArachnaphobiaShieldSettings.coverStyle == "blue" and ArachnaphobiaShield.Cover.ShownCount() == 0,
@@ -452,6 +444,9 @@ ArachnaphobiaShield.OnEnterWorld()
 ArachnaphobiaShield.ClearTrack()
 check(ArachnaphobiaShieldSettings.coverStyle == "fox" and ArachnaphobiaShieldSettings.enabled and ArachnaphobiaShieldSettings.covers == nil,
     "defaults: fresh install selects the fox and enables only tracking")
+-- Neutralize the automatic near ramp for the calibrated-geometry tests
+-- below; the near block re-enables the boost and tests the ramp itself.
+ArachnaphobiaShieldSettings.nearBoost = 1.0
 
 -- The owner's actual goal (2026-10-15): walk toward spiders, no targeting and
 -- no mouseover, and a cover appears over each spider model, moving and
@@ -609,30 +604,40 @@ plateA.GetWidth = getWidth
 UIParent.scale, plateA.effScale = 1, 0.5
 plateA:SetWidth(100)
 
--- Near-field boost (2026-10-16 owner screenshot: the closest visible spider
--- showed its legs). The client holds nameplate apparent size in a narrow
--- band while the model keeps growing as the camera approaches, so the
--- calibrated cover under-covers close spiders. True camera distance is
--- unmeasurable on this client (every position API absent -
--- docs/API-VERIFICATION.md); the near band is detected on the plate's
--- apparent width (width x scale, UI-scale px).
-ArachnaphobiaShieldSettings.nearThreshold = 40 -- plate apparent width is 100 x 0.5 = 50
-ArachnaphobiaShieldSettings.nearBoost = 2.5
+-- Near-field boost, v0.4.1 automatic (2026-10-16 owner screenshot: the
+-- closest visible spider showed its legs). The client holds nameplate
+-- apparent size in a narrow band while the model keeps growing as the
+-- camera approaches, so the calibrated cover under-covers close spiders.
+-- True camera distance is unmeasurable on this client (every position API
+-- absent - docs/API-VERIFICATION.md); the boost is a continuous ramp on
+-- the plate's apparent width (width x scale, UI-scale px): 1.0 at/under
+-- 30 UI, smoothstep to the nearBoost ceiling at/above 80 UI - flat across
+-- the measured close band (87-113 UI) so the cover cannot "breathe".
+ArachnaphobiaShieldSettings.nearBoost = 2.5 -- plate apparent width is 100 x 0.5 = 50
 ArachnaphobiaShield.Tick()
-check(trackedFrame:GetWidth() == 100 * 1.0 * 2.5,
-	"near: plate at/above the threshold gets the near-field size boost")
+-- ramp at apparent 50: x = (50-30)/(80-30) = 0.4, smoothstep = 0.352,
+-- boost = 1 + 1.5 x 0.352 = 1.528
+check(math.abs(trackedFrame:GetWidth() - 100 * 1.528) < 0.001,
+	"near: mid-range apparent width gets a partial boost (ramp at 50 UI)")
 local ptNear = ArachnaphobiaShield.Cover.pool[trA].frame.points[1]
-check(ptNear.y * trackedFrame:GetEffectiveScale() == -62.5,
+check(math.abs(ptNear.y * trackedFrame:GetEffectiveScale() + 152.8 * 0.5 * 0.5) < 0.001,
 	"near: the boosted cover keeps the drop ratio below the plate")
-plateA.effScale = 0.2 -- apparent 20 < 40: a far spider
+plateA.effScale = 0.2 -- apparent 20 < 30: a far spider, ramp not started
 ArachnaphobiaShield.Tick()
 check(trackedFrame:GetWidth() == 100,
-	"near: plate below the threshold keeps the calibrated size")
+	"near: a far plate below the ramp keeps the calibrated size")
 plateA.effScale = 0.5
-ArachnaphobiaShieldSettings.nearThreshold = 0
 ArachnaphobiaShieldSettings.nearBoost = 2.6
+plateA:SetWidth(160) -- apparent 80: exactly the high knee, full ceiling
 ArachnaphobiaShield.Tick()
-check(trackedFrame:GetWidth() == 100, "near: threshold 0 disables the boost")
+check(trackedFrame:GetWidth() == 160 * 2.6,
+	"near: at the high knee the boost reaches the full ceiling")
+plateA:SetWidth(180) -- apparent 90: inside the measured close band 87-113
+ArachnaphobiaShield.Tick()
+check(trackedFrame:GetWidth() == 180 * 2.6,
+	"near: the boost stays flat across the measured close band (no breathing)")
+plateA:SetWidth(100)
+ArachnaphobiaShield.Tick()
 
 -- A token changing to a non-spider is positive evidence of reuse. Grace
 -- applies only to a missing token, never to a known different creature.
@@ -1299,11 +1304,11 @@ ArachnaphobiaShield.autoSuspended = true
 O.Open()
 O.input:SetText("Interface/AddOns/ArachnaphobiaShield/Custom/unsubmitted.tga")
 capture(function() ArachnaphobiaShield.Slash("reset") end)
-check(ArachnaphobiaShieldSettings.version == 4 and ArachnaphobiaShieldSettings.enabled == true
+check(ArachnaphobiaShieldSettings.version == 5 and ArachnaphobiaShieldSettings.enabled == true
     and ArachnaphobiaShieldSettings.coverStyle == "fox" and ArachnaphobiaShieldSettings.customCover == ""
     and ArachnaphobiaShieldSettings.opacity == nil and ArachnaphobiaShieldSettings.coverSize == 96
     and ArachnaphobiaShieldSettings.trackScale == 1.0 and ArachnaphobiaShieldSettings.drop == 0.5
-    and ArachnaphobiaShieldSettings.trackRelease == 0.5 and ArachnaphobiaShieldSettings.nearThreshold == 0
+    and ArachnaphobiaShieldSettings.trackRelease == 0.5
     and ArachnaphobiaShieldSettings.nearBoost == 2.6 and ArachnaphobiaShieldSettings.requireHostile == false
     and ArachnaphobiaShieldSettings.minLevel == 1 and ArachnaphobiaShieldSettings.maxLevel == 99
     and #ArachnaphobiaShieldSettings.extraNames == 0 and #ArachnaphobiaShieldSettings.namePatterns == 0
@@ -1311,7 +1316,8 @@ check(ArachnaphobiaShieldSettings.version == 4 and ArachnaphobiaShieldSettings.e
 check(ArachnaphobiaShieldSettings.autoTrack == nil and ArachnaphobiaShieldSettings.stickyCovers == nil
     and ArachnaphobiaShieldSettings.parkCount == nil and ArachnaphobiaShieldSettings.arrange == nil
     and ArachnaphobiaShieldSettings.covers == nil and ArachnaphobiaShieldSettings.color == nil
-    and ArachnaphobiaShieldSettings.opacity == nil,
+    and ArachnaphobiaShieldSettings.opacity == nil
+    and ArachnaphobiaShieldSettings.nearThreshold == nil,
     "reset: retired settings are not reintroduced")
 check(ArachnaphobiaShield.debug == false and ArachnaphobiaShield.autoSuspended == false
     and ArachnaphobiaShield.trackFailures == 0 and ArachnaphobiaShield.tickErrors == 0,

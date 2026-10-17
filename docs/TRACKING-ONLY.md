@@ -16,7 +16,7 @@ attachment, reuse, failed cleanup and removal.
 - `/as`: show status and diagnostics. `/as help` lists supported commands.
 
 `on`, `off` and `toggle` remain compatibility aliases. Coverage calibration
-(`grow`, `drop`, `near`, fallback `size`), extra creature names and debug logging
+(`grow`, `drop`, fallback `size`), extra creature names and debug logging
 remain available. See the README and [image guide](COVER-IMAGES.md).
 
 There are no screen-positioned covers, movement handlers, layout commands,
