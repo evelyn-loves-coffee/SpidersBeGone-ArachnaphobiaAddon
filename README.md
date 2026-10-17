@@ -96,6 +96,11 @@ the whole band the client clamps to. There is no setting to change it
 (`/as near` is retired); verify with `/as debug on` and the `AS| near:`
 line (apparent width and computed factor per plate).
 
+**Known issue (2026-10-17):** the 30→80 ramp keeps mid-range covers too
+large - far spiders no longer get the small plate-proportional shield that
+`/as near 1` gave. Fix designed (move the low knee to 60): see
+[docs/NEAR-RAMP.md](docs/NEAR-RAMP.md).
+
 **Known limitation:** when the camera is very close, the client clamps the
 nameplate itself (edge/stacking), the cover follows the plate, and no
 UI-layer addon can reposition the plate on this client.

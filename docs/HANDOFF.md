@@ -198,7 +198,11 @@ apparent plate width, not unavailable creature distance: a smooth ramp on
 apparent width (none at/under 30 UI px, full `nearBoost` at/above 80 UI px,
 flat across the measured 87–113 UI close band). Debug on, approach a
 spider, and read the `AS| near:` line (apparent width and computed factor)
-to verify. Do not change the sizing model without live measurements. Nameplate stacking/clamping can
+to verify. Do not change the sizing model without live measurements.
+
+**Open field issue (2026-10-17):** the 30→80 ramp keeps mid-range covers
+too large; the owner wants the `/as near 1` far-shrink behavior kept.
+Designed fix (low knee 30→60) and options table: [NEAR-RAMP.md](NEAR-RAMP.md). Nameplate stacking/clamping can
 still move a cover away from the body, and very close models can extend
 beyond a cover. No UI-layer workaround for missing world projection is used.
 
