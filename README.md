@@ -4,8 +4,14 @@ Addon for **World of Warcraft Forever** (classic 1.x-line client, v1.60.1) that
 covers spider models with a nameplate-attached UI element. UI-layer only: no model
 swaps, no game-file modification.
 
-**Status: v0.3.8 — opacity retired, fox camo card, strict custom path; live
-validation belongs on the partner's test machine.** v0.3.8 removes the
+**Status: v0.4.0 — picker preview fix, percentage sizing, near levels;**
+**live validation belongs on the partner's test machine.** v0.4.0 fixes the
+blank `/as config` preview (the checker, backing and art now follow the
+in-game cover's one-frame layout and show cycle) and simplifies tuning:
+`/as grow` takes a percentage (`100` = default, allowed `80`–`120`), `/as
+near` takes a level `0`–`3` (`0` off, `1` = closest only, `3` = from
+farther), and the dead `/as size` command is retired (the plate-width
+fallback it set never triggers on this client). v0.3.8 removed the
 opacity control entirely: this client fades nameplates (and their children,
 i.e. the covers) with distance no matter what the addon sets, so the setting
 could never do what it promised. Covers are always fully opaque. The fox now
@@ -48,7 +54,7 @@ for the historical design and client-probe records.
 Extract the fixed ZIP and replace the `ArachnaphobiaShield/` folder in your client's
 `Interface/AddOns/` directory, then log in or `/reload`. The `.toc` must be at
 `Interface/AddOns/ArachnaphobiaShield/ArachnaphobiaShield.toc`, without an extra nested
-repository folder. `/as` should report **v0.3.8**.
+repository folder. `/as` should report **v0.4.0**.
 
 Choose your cover with **`/as config`**. The default is the supplied fox
 illustration on a navy-toned camouflage squircle card; alternatives are
@@ -64,8 +70,8 @@ mouseover; the 1.75-second corpse warning is unchanged.
 Enable enemy nameplates in the game. The addon starts enabled on a new install;
 `/as enable` also enables tracking immediately and retries paused coverage.
 `/as disable` stops tracking and hides every cover.
-No mouseover or separate auto command is needed. Tune coverage with `/as grow 2`
-and `/as drop 0.5` as needed.
+No mouseover or separate auto command is needed. Tune coverage with `/as
+grow 120` (up to `120%` of the nameplate) and `/as drop 0.5` as needed.
 
 The cover follows the visible nameplate. Stacking or screen-edge clamping by
 the game can move a nameplate away from the model; this client exposes no usable
@@ -77,10 +83,14 @@ band while the model keeps growing as the camera approaches, so a
 plate-proportional cover under-covers close spiders (legs showing). True
 camera distance is unmeasurable on this client (every position API is
 absent), so the boost is not graded by distance: when a plate's apparent
-width reaches `/as near`'s threshold, its cover is multiplied by the
-near-field boost (default `2.6`). Calibrate once: `/as debug on`, walk
-from far to close at a spider, read the `AS| near:` line, then
-`/as near <N>` (default `0` = off).
+width reaches the selected level's threshold, its cover is multiplied by
+the near-field boost (`2.6`). `/as near` takes a whole number `0`–`3`
+(default `0` = off): **1** = only when the spider is right in front of the
+camera (apparent width ≥ 80), **2** = ≥ 30, **3** = ≥ 10 (boosts from
+farther away). The level-1 threshold sits just below the two measured
+close-range apparent widths (87–113 UI units, calibrated from 2026-10-16
+screenshots at 1.205 px/UI). Fine-tune with `/as debug on` and the
+`AS| near:` line.
 
 **Known limitation:** when the camera is very close, the client clamps the
 nameplate itself (edge/stacking), the cover follows the plate, and no
@@ -148,10 +158,9 @@ review and Classic filtering rules are in [docs/DATA-SOURCES.md](docs/DATA-SOURC
 | `/as enable` | enable tracking and retry paused coverage; enabled by default |
 | `/as disable` | stop tracking and hide every cover; stays disabled after reload |
 | `/as toggle` | switch between enabled tracking and disabled covers |
-| `/as grow [N]` | how much bigger than the nameplate a cover is (`0.2`–`6`, default `1.6`) |
+| `/as grow [N]` | cover size as a **percentage** of the nameplate width, whole number `80`–`120`, `100` = default |
 | `/as drop [N]` | how far below the nameplate it sits (`0`–`4`, default `0.5` — calibrated in game 2026-10-16) |
-| `/as near [N]` | near-field boost: plate apparent width (`UI` px) at/above which the tracked cover gets the ×`2.6` boost (`0`–`1000`, default `0` = off) |
-| `/as size [N]` | fallback cover size in UI units (`16`–`512`) when plate geometry is unavailable |
+| `/as near [N]` | near-field boost level, whole number `0`–`3`: `0` = off, `1` = apparent width ≥ 80 (closest only), `2` = ≥ 30, `3` = ≥ 10 (boost ×`2.6`) |
 | `/as name <name>` | "cover this one too": add an **exact** creature name (spaces allowed) |
 | `/as names` | list the names you added |
 | `/as forget <name>` | remove one you added |

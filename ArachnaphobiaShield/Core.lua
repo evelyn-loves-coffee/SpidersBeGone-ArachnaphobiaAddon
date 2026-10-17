@@ -17,7 +17,7 @@ Client facts (docs/PLAN.md §2, verified in-client 2026-10-13):
 ]]
 
 ArachnaphobiaShield = ArachnaphobiaShield or {}
-ArachnaphobiaShield.version = "0.3.8"
+ArachnaphobiaShield.version = "0.4.0"
 local A = ArachnaphobiaShield.Access
 
 ArachnaphobiaShield.hidden = nil  -- panic-hide seam (M4); true hides every cover
@@ -58,7 +58,9 @@ local DEFAULTS = {
 	minLevel = 1,
 	maxLevel = 99,
 	-- Native nameplate tracking is the only detection mode.
-	trackScale = 1.6,   -- cover local size = plate local width x this
+	trackScale = 1.0,   -- cover local size = plate local width x this
+	-- v0.4.0: /as grow is a PERCENTAGE (100 = default 1.0, allowed 80-120);
+	-- the stored value stays a multiplier (0.8-1.2).
 	-- drop: centre the cover this many cover-heights below the plate.
 	-- Calibrated in game 2026-10-16 (owner screenshot, Tirisfal, Young Night
 	-- Web Spider): at 0.9 the model sat above the cover's top edge; at 0.5
@@ -75,8 +77,11 @@ local DEFAULTS = {
 	-- distance signal the plate does expose: its apparent width
 	-- (GetWidth x GetEffectiveScale, in UI-scale px). At/above nearThreshold
 	-- the plate is saturated next to the model and the tracked size is
-	-- multiplied by nearBoost. Calibrate: /as debug on, walk 30y -> 2y
-	-- at a spider, read the 'AS| near:' line, then /as near <N>. 0 = off.
+	-- multiplied by nearBoost. v0.4.0: /as near takes a level 0-3
+	-- (0 = off; 1 -> 80, 2 -> 30, 3 -> 10 UI apparent width). Level 1 sits
+	-- just below the two measured close-range apparent widths (87-113 UI,
+	-- 1.205 px/UI calibration, 2026-10-16 screenshots); levels 2 and 3
+	-- reach farther. Fine-tune with /as debug on and the 'AS| near:' line.
 	nearThreshold = 0,
 	nearBoost = 2.6,
 	debug = false,
@@ -98,6 +103,11 @@ local function EnsureSettings()
 		if type(s[k]) ~= type(v) then
 			s[k] = freshDefault(v)
 		end
+	end
+	-- v0.4.0: legacy v0.3.x multipliers (0.2-6) are outside the new 80-120
+	-- percent band; clamp them into it instead of silently keeping them.
+	if type(s.trackScale) == "number" then
+		s.trackScale = math.max(0.8, math.min(1.2, s.trackScale))
 	end
 	-- Purge retired fields for every character at once. A late-loaded save
 	-- must not restore an input-taking mode or any screen-positioned cover.
@@ -171,40 +181,58 @@ function ArachnaphobiaShield.Slash(msg)
 		ArachnaphobiaShield.Slash(ArachnaphobiaShieldSettings.enabled and "disable" or "enable")
 	elseif first == "reset" then
 		ArachnaphobiaShield.Reset()
-	elseif first == "grow" or first == "drop" or first == "size" then
-		-- grow = cover size relative to the plate; drop = how far below the
-		-- plate the cover is centred (models hang below their nameplate);
-		-- size = fallback UI size when a plate width is unavailable.
-		local key = (first == "grow") and "trackScale" or (first == "drop") and "drop" or "coverSize"
+	elseif first == "grow" then
+		-- v0.4.0: cover size as a PERCENTAGE of the plate width. 100 = the
+		-- default; allowed 80-120. Stored as a multiplier (0.8-1.2).
 		local v = tonumber(string.match(msg or "", "^%s*%S+%s+(%S+)"))
 		if not v then
-			print(("AS| %s = %s (set with: /as %s N)"):format(key,
-				tostring(ArachnaphobiaShieldSettings[key]), first))
-		else
-			local lo, hi = 0.2, 6
-			if first == "drop" then
-				lo, hi = 0, 4
-			elseif first == "size" then
-				lo, hi = 16, 512
-			end
-			if v < lo then v = lo elseif v > hi then v = hi end
-			ArachnaphobiaShieldSettings[key] = v
-			print(("AS| %s = %.2f"):format(key, v))
+			local cur = (type(ArachnaphobiaShieldSettings.trackScale) == "number")
+				and ArachnaphobiaShieldSettings.trackScale or 1.0
+			print(("AS| grow = %d%% (100 = default, allowed 80-120)")
+				:format(math.floor(cur * 100 + 0.5)))
+			return
 		end
-	elseif first == "near" then
-		-- Near-field boost threshold: the plate's apparent width (UI-scale px,
-		-- from the 'AS| near:' debug line) at/above which the client is
-		-- holding the nameplate in its near band and the tracked cover is
-		-- multiplied by the near-field boost (close spiders, legs showing).
+		if v ~= math.floor(v) or v < 80 or v > 120 then
+			print("AS| grow: expected a whole number 80-120 (100 = default)")
+			return
+		end
+		ArachnaphobiaShieldSettings.trackScale = v / 100
+		print(("AS| grow = %d%%"):format(v))
+	elseif first == "drop" then
+		-- drop = how far below the plate the cover is centred (models hang
+		-- below their nameplate)
 		local v = tonumber(string.match(msg or "", "^%s*%S+%s+(%S+)"))
 		if not v then
-			print(("AS| near = %s (set with: /as near N - 0 off; read N from the 'AS| near:' debug line)"):format(
-				tostring(ArachnaphobiaShieldSettings.nearThreshold)))
+			print(("AS| drop = %s (set with: /as drop N)"):format(
+				tostring(ArachnaphobiaShieldSettings.drop)))
+			return
+		end
+		if v < 0 then v = 0 elseif v > 4 then v = 4 end
+		ArachnaphobiaShieldSettings.drop = v
+		print(("AS| drop = %.2f"):format(v))
+	elseif first == "near" then
+		-- v0.4.0: near-field boost LEVEL, not a raw threshold. The plate's
+		-- apparent width (UI-scale px, from the 'AS| near:' debug line) is
+		-- compared against the level's threshold: 0 = off, 1 = 80 (right in
+		-- front of the camera - below the two measured close-range values,
+		-- 87-113 UI), 2 = 30, 3 = 10 (boosts from farther away).
+		local v = tonumber(string.match(msg or "", "^%s*%S+%s+(%S+)"))
+		if not v then
+			print(("AS| near = %s (levels: 0 = off, 1 = 80, 2 = 30, 3 = 10 UI apparent width)")
+				:format(tostring(ArachnaphobiaShieldSettings.nearThreshold)))
+			return
+		end
+		local iv = math.floor(v + 0.5)
+		if iv ~= v or iv < 0 or iv > 3 then
+			print("AS| near: expected a whole number 0-3 (0 = off)")
+			return
+		end
+		local levels = { [0] = 0, [1] = 80, [2] = 30, [3] = 10 }
+		ArachnaphobiaShieldSettings.nearThreshold = levels[iv]
+		if iv == 0 then
+			print("AS| near = 0 (off)")
 		else
-			v = math.floor(v)
-			if v < 0 then v = 0 elseif v > 1000 then v = 1000 end
-			ArachnaphobiaShieldSettings.nearThreshold = v
-			print(("AS| near = %d (0 = off)"):format(v))
+			print(("AS| near = %d (boost when apparent width >= %d; 0 = off)"):format(iv, levels[iv]))
 		end
 	elseif first == "debug" then
 		local a = string.match(msg or "", "^%s*debug%s+(%S+)") or ""
@@ -276,7 +304,7 @@ function ArachnaphobiaShield.Slash(msg)
 		-- No '|' chars in chat text: the WoW chat filter eats chat-control
 		-- sequences like |t / |h (AS11) — use ' / ' separators.
 		print("AS| /as enable / disable / reset / config - image picker / cover <fox / red / blue / sage / charcoal / custom PATH>")
-		print("AS| Advanced: grow N / drop N / near N / size N / name X / names / forget X / debug on / debug off")
+		print("AS| Advanced: grow N (80-120, 100 = default) / drop N / near 0-3 (0 = off) / name X / names / forget X / debug on / debug off")
 	else
 		print(("AS| unknown subcommand '%s' - /as help for usage"):format(first))
 	end
@@ -316,9 +344,13 @@ function ArachnaphobiaShield.Selftest()
 			if ArachnaphobiaShield.Cover.IsAllocated(slot) then tracked = tracked + 1 end
 		end
 	end
-	print(("AS| mode=tracking tracked=%d grow=%s drop=%s near=%s | covers shown=%d/%d | fallbackSize=%s | limited=%s paused=%s"):format(
-		tracked, tostring(s.trackScale),
-		tostring(s.drop), tostring(s.nearThreshold),
+	-- v0.4.0: report the same units the commands accept (grow %, near level).
+	local growPct = math.floor((tonumber(s.trackScale) or 1.0) * 100 + 0.5)
+	local levelNames = { [0] = "off", [80] = "1", [30] = "2", [10] = "3" }
+	local nearLabel = levelNames[s.nearThreshold] or ("custom=" .. tostring(s.nearThreshold))
+	print(("AS| mode=tracking tracked=%d grow=%d%% drop=%s near=%s | covers shown=%d/%d | fallbackSize=%s | limited=%s paused=%s"):format(
+		tracked, growPct,
+		tostring(s.drop), nearLabel,
 		ArachnaphobiaShield.Cover.ShownCount(), ArachnaphobiaShield.Cover.MAX,
 		tostring(s.coverSize), tostring(ArachnaphobiaShield.coverageLimited == true), tostring(ArachnaphobiaShield.autoSuspended == true)))
 end
@@ -520,7 +552,7 @@ function ArachnaphobiaShield.TrackTick()
 	local C, U = ArachnaphobiaShield.Cover, ArachnaphobiaShield.Units
 	local s = ArachnaphobiaShieldSettings
 	local t = ArachnaphobiaShield.track
-	local grow = tonumber(s.trackScale) or 1.6
+	local grow = tonumber(s.trackScale) or 1.0
 	local dropK = tonumber(s.drop) or 0.5
 	local nearT = tonumber(s.nearThreshold) or 0
 	local nearB = tonumber(s.nearBoost) or 2.6

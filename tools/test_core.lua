@@ -259,10 +259,43 @@ check(#out == 3 and out[1]:find("WoW 1%.60%.1") and out[3]:find("mode=tracking")
     "status: reports client and tracking without saved-layout controls")
 check(not table.concat(out, " "):find("arrange=") and not table.concat(out, " "):find("saved="),
     "status: removed layout settings do not appear in diagnostics")
-for _, command in ipairs({ "park", "parks 8", "arrange on", "arrange off", "clear", "release", "auto on" }) do
+for _, command in ipairs({ "park", "parks 8", "arrange on", "arrange off", "clear", "release", "auto on", "size 96", "size" }) do
     out = capture(function() ArachnaphobiaShield.Slash(command) end)
     check(#out == 1 and out[1]:find("unknown subcommand"), "slash: obsolete command has no implementation: " .. command)
 end
+
+-- ---- /as grow / /as near: v0.4.0 percentage and level semantics --------
+out = capture(function() ArachnaphobiaShield.Slash("grow 100") end)
+check(#out == 1 and out[1]:find("grow = 100%", 1, true) and ArachnaphobiaShieldSettings.trackScale == 1.0,
+    "grow: 100 is the default and stores a 1.0 multiplier")
+out = capture(function() ArachnaphobiaShield.Slash("grow 80") end)
+check(out[1]:find("grow = 80%", 1, true) and ArachnaphobiaShieldSettings.trackScale == 0.8, "grow: 80 stores 0.8")
+out = capture(function() ArachnaphobiaShield.Slash("grow 120") end)
+check(out[1]:find("grow = 120%", 1, true) and ArachnaphobiaShieldSettings.trackScale == 1.2, "grow: 120 stores 1.2")
+for _, bad in ipairs({ "79", "121", "1.5" }) do
+    out = capture(function() ArachnaphobiaShield.Slash("grow " .. bad) end)
+    check(#out == 1 and out[1]:find("whole number 80-120", 1, true), "grow rejects: " .. bad)
+end
+out = capture(function() ArachnaphobiaShield.Slash("grow abc") end)
+check(#out == 1 and out[1]:find("grow = 120%", 1, true), "grow: non-numeric input reports the current value")
+out = capture(function() ArachnaphobiaShield.Slash("grow") end)
+check(#out == 1 and out[1]:find("grow = 120%", 1, true), "grow: no argument reports the current percentage")
+out = capture(function() ArachnaphobiaShield.Slash("near 1") end)
+check(out[1]:find("near = 1 ") and ArachnaphobiaShieldSettings.nearThreshold == 80, "near: level 1 stores threshold 80")
+out = capture(function() ArachnaphobiaShield.Slash("near 2") end)
+check(ArachnaphobiaShieldSettings.nearThreshold == 30, "near: level 2 stores threshold 30")
+out = capture(function() ArachnaphobiaShield.Slash("near 3") end)
+check(ArachnaphobiaShieldSettings.nearThreshold == 10, "near: level 3 stores threshold 10")
+out = capture(function() ArachnaphobiaShield.Slash("near 0") end)
+check(ArachnaphobiaShieldSettings.nearThreshold == 0, "near: level 0 turns the boost off")
+for _, bad in ipairs({ "4", "-1", "1.5" }) do
+    out = capture(function() ArachnaphobiaShield.Slash("near " .. bad) end)
+    check(#out == 1 and out[1]:find("whole number 0-3", 1, true), "near rejects: " .. bad)
+end
+out = capture(function() ArachnaphobiaShield.Slash("near abc") end)
+check(#out == 1 and out[1]:find("near = 0"), "near: non-numeric input reports the current state")
+out = capture(function() ArachnaphobiaShield.Slash("near") end)
+check(#out == 1 and out[1]:find("near = 0"), "near: no argument reports the current level state")
 out = capture(function() ArachnaphobiaShield.Slash("help") end)
 check(#out == 2 and not table.concat(out, " "):find("parks") and not table.concat(out, " "):find("arrange")
     and not table.concat(out, " "):find("clear / release"), "help: only supported commands are advertised")
@@ -375,7 +408,7 @@ clearUnits()
 clearUnits()
 setUnit("player", { name = "TestWarrior", player = true })
 ArachnaphobiaShieldSettings.minLevel, ArachnaphobiaShieldSettings.maxLevel, ArachnaphobiaShieldSettings.requireHostile = 1, 99, false
-ArachnaphobiaShieldSettings.trackScale, ArachnaphobiaShieldSettings.drop, ArachnaphobiaShieldSettings.coverSize = 1.6, 0.5, 96
+ArachnaphobiaShieldSettings.trackScale, ArachnaphobiaShieldSettings.drop, ArachnaphobiaShieldSettings.coverSize = 1.0, 0.5, 96
 ArachnaphobiaShield.ready = false
 event = "PLAYER_ENTERING_WORLD"
 ArachnaphobiaShield.eventFrame.scripts.OnEvent()
@@ -465,12 +498,12 @@ check(ptA and ptA.relFrame == plateA and ptA.anchor == "CENTER" and ptA.relPoint
 local trackedFrame = ArachnaphobiaShield.Cover.pool[trA].frame
 check(trackedFrame:GetParent() == plateA,
 	"track: cover belongs to the moving nameplate instead of the screen root")
--- 160 plate-local units render as 80 UI units at scale 0.5.
-check(ArachnaphobiaShield.Cover.pool[trA].w == 160 and trackedFrame:GetWidth() * trackedFrame:GetEffectiveScale() == 80,
+-- 100 plate-local units (100% of the plate) render as 50 UI units at scale 0.5.
+check(ArachnaphobiaShield.Cover.pool[trA].w == 100 and trackedFrame:GetWidth() * trackedFrame:GetEffectiveScale() == 50,
 	"track: plate-local cover size inherits distance scale exactly once")
 -- drop = 0.5 cover-heights below the plate (calibrated in game 2026-10-16:
 -- at 0.9 the model sat above the cover's top edge)
-check(ptA and math.abs((ptA.y or 0) * trackedFrame:GetEffectiveScale() + 40) < 0.001,
+check(ptA and math.abs((ptA.y or 0) * trackedFrame:GetEffectiveScale() + 25) < 0.001,
 	"track: centred below the plate by the drop factor")
 
 -- The renderer owns plate coordinates; the addon may not query them. Move
@@ -486,27 +519,27 @@ local function renderedCenter(frame)
 end
 plateA.nativeX, plateA.nativeY = 500, 400
 local rx, ry = renderedCenter(trackedFrame)
-check(rx == 500 and ry == 360, "track: native transform places the cover below its spider plate")
+check(rx == 500 and ry == 375, "track: native transform places the cover below its spider plate")
 plateA.nativeX, plateA.nativeY = 750, 350
 rx, ry = renderedCenter(trackedFrame)
-check(rx == 750 and ry == 310,
+check(rx == 750 and ry == 325,
 	"track: native model movement moves its cover before the next polling tick")
 
 -- Perspective changes between the 10 Hz scans: native parenting must scale
 -- BOTH the disc and its offset immediately, without another Lua update.
 plateA.effScale = 1
-check(trackedFrame:GetWidth() * trackedFrame:GetEffectiveScale() == 160
-	and ptA.y * trackedFrame:GetEffectiveScale() == -80,
+check(trackedFrame:GetWidth() * trackedFrame:GetEffectiveScale() == 100
+	and ptA.y * trackedFrame:GetEffectiveScale() == -50,
 	"track: camera zoom scales the cover and drop between polling ticks")
 ArachnaphobiaShield.Tick()
-check(trackedFrame:GetWidth() == 160,
+check(trackedFrame:GetWidth() == 100,
 	"track: next poll does not apply the inherited plate scale a second time")
 plateA.effScale = 0.5
 
 -- The plate gets bigger (camera moves in): the cover grows on the next tick.
 plateA:SetWidth(200)
 ArachnaphobiaShield.Tick()
-check(ArachnaphobiaShield.Cover.pool[trA].w == 320, "track: cover grows when the plate's local width grows")
+check(ArachnaphobiaShield.Cover.pool[trA].w == 200, "track: cover grows when the plate's local width grows")
 
 check(ArachnaphobiaShieldSettings.covers == nil, "track: no live cover positions are persisted")
 
@@ -566,7 +599,7 @@ plateA:SetWidth(100)
 ArachnaphobiaShield.Tick()
 trA = ArachnaphobiaShield.track.nameplate1
 trackedFrame = ArachnaphobiaShield.Cover.pool[trA].frame
-check(trackedFrame:GetWidth() * trackedFrame:GetEffectiveScale() / UIParent.scale == 80,
+check(trackedFrame:GetWidth() * trackedFrame:GetEffectiveScale() / UIParent.scale == 50,
 	"track: non-default UI scale stays independent of perspective scale")
 plateA:SetWidth(10000)
 ArachnaphobiaShield.Tick()
@@ -595,20 +628,20 @@ plateA:SetWidth(100)
 ArachnaphobiaShieldSettings.nearThreshold = 40 -- plate apparent width is 100 x 0.5 = 50
 ArachnaphobiaShieldSettings.nearBoost = 2.5
 ArachnaphobiaShield.Tick()
-check(trackedFrame:GetWidth() == 100 * 1.6 * 2.5,
+check(trackedFrame:GetWidth() == 100 * 1.0 * 2.5,
 	"near: plate at/above the threshold gets the near-field size boost")
 local ptNear = ArachnaphobiaShield.Cover.pool[trA].frame.points[1]
-check(ptNear.y * trackedFrame:GetEffectiveScale() == -100,
+check(ptNear.y * trackedFrame:GetEffectiveScale() == -62.5,
 	"near: the boosted cover keeps the drop ratio below the plate")
 plateA.effScale = 0.2 -- apparent 20 < 40: a far spider
 ArachnaphobiaShield.Tick()
-check(trackedFrame:GetWidth() == 160,
+check(trackedFrame:GetWidth() == 100,
 	"near: plate below the threshold keeps the calibrated size")
 plateA.effScale = 0.5
 ArachnaphobiaShieldSettings.nearThreshold = 0
 ArachnaphobiaShieldSettings.nearBoost = 2.6
 ArachnaphobiaShield.Tick()
-check(trackedFrame:GetWidth() == 160, "near: threshold 0 disables the boost")
+check(trackedFrame:GetWidth() == 100, "near: threshold 0 disables the boost")
 
 -- A token changing to a non-spider is positive evidence of reuse. Grace
 -- applies only to a missing token, never to a known different creature.
@@ -1179,10 +1212,10 @@ check(O.background.texture[1] == "Interface\\AddOns\\ArachnaphobiaShield\\picker
     and O.buttons.fox.background.texture[1] == "Interface\\AddOns\\ArachnaphobiaShield\\picker-btn.tga"
     and O.input.background.texture[1] == "Interface\\AddOns\\ArachnaphobiaShield\\picker-field.tga",
     "picker: window, buttons and field use proven string-path background textures")
-check(O.preview.frame ~= O.previewBase.frame
+check(O.preview.frame == O.previewBase.frame
     and O.preview.frame ~= O.previewChecker.frame
-    and O.previewBase.frame ~= O.previewChecker.frame,
-    "picker: preview checker, backing and art each sit on their own frame")
+    and O.preview.frame:IsShown() and O.previewChecker.frame:IsShown(),
+    "picker: backing and art share the pool-style cover frame; both preview frames shown after open")
 O.buttons.red.scripts.OnClick()
 check(ArachnaphobiaShieldSettings.coverStyle == "red" and O.preview.texture[1] == P.Find("red").path,
     "config: native no-argument button scripts save and preview the selected preset")
@@ -1290,10 +1323,9 @@ O.Close()
 -- ---- /as reset: factory defaults --------------------------------------
 -- State entering this section: tracking disabled, pool released.
 capture(function() ArachnaphobiaShield.Slash("cover blue") end)
-capture(function() ArachnaphobiaShield.Slash("grow 2.5") end)
+capture(function() ArachnaphobiaShield.Slash("grow 120") end)
 capture(function() ArachnaphobiaShield.Slash("drop 1.25") end)
-capture(function() ArachnaphobiaShield.Slash("near 40") end)
-capture(function() ArachnaphobiaShield.Slash("size 128") end)
+capture(function() ArachnaphobiaShield.Slash("near 1") end)
 capture(function() ArachnaphobiaShield.Slash("name Reset Test Spider") end)
 capture(function() ArachnaphobiaShield.Slash("debug on") end)
 ArachnaphobiaShield.autoSuspended = true
@@ -1303,7 +1335,7 @@ capture(function() ArachnaphobiaShield.Slash("reset") end)
 check(ArachnaphobiaShieldSettings.version == 4 and ArachnaphobiaShieldSettings.enabled == true
     and ArachnaphobiaShieldSettings.coverStyle == "fox" and ArachnaphobiaShieldSettings.customCover == ""
     and ArachnaphobiaShieldSettings.opacity == nil and ArachnaphobiaShieldSettings.coverSize == 96
-    and ArachnaphobiaShieldSettings.trackScale == 1.6 and ArachnaphobiaShieldSettings.drop == 0.5
+    and ArachnaphobiaShieldSettings.trackScale == 1.0 and ArachnaphobiaShieldSettings.drop == 0.5
     and ArachnaphobiaShieldSettings.trackRelease == 0.5 and ArachnaphobiaShieldSettings.nearThreshold == 0
     and ArachnaphobiaShieldSettings.nearBoost == 2.6 and ArachnaphobiaShieldSettings.requireHostile == false
     and ArachnaphobiaShieldSettings.minLevel == 1 and ArachnaphobiaShieldSettings.maxLevel == 99

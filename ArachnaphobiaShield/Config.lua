@@ -115,16 +115,24 @@ local function create()
 	end
 	O.buttons.custom = button(f, "Custom image", 230, 36, "TOPLEFT", "TOPLEFT", 20, -80 - #P.PRESETS * 44,
 		function() applyCustom() end)
-	-- Checker, backing and art live on three stacked single-texture frames:
-	-- one texture per frame is the layout every working frame in this addon
-	-- already follows, while three textures on one frame is unproven here.
+	-- Preview layout (v0.4.0): the checker is one single-texture frame;
+	-- backing and art are the two textures of ONE second frame - exactly
+	-- the pool cover layout that renders in game. Same-anchor sibling
+	-- frames on this client do not stack in creation order (2026-10-16
+	-- screenshot: the checker, created first, hid the painted art), so the
+	-- two preview frames carry explicit frame levels - the same guarded
+	-- SetFrameLevel the panel itself uses - and follow the pool display
+	-- cycle: created hidden, painted while hidden, shown after the window.
 	local preview = {}
-	for _, name in ipairs({ "checker", "base", "art" }) do
+	for _, name in ipairs({ "checker", "cover" }) do
 		preview[name] = region(f, 256, 256, "TOPRIGHT", "TOPRIGHT", -35, -80)
+		preview[name]:Hide()
 	end
+	if preview.checker.SetFrameLevel then pcall(preview.checker.SetFrameLevel, preview.checker, 51) end
+	if preview.cover.SetFrameLevel then pcall(preview.cover.SetFrameLevel, preview.cover, 52) end
 	O.previewChecker = solid(preview.checker, ASSET.checker)
-	O.previewBase = textureOn(preview.base)  -- PaintCover fills both below
-	O.preview = textureOn(preview.art)
+	O.previewBase = textureOn(preview.cover)  -- PaintCover fills both below
+	O.preview = textureOn(preview.cover)
 	O.previewFrames = preview
 	O.status = text(region(f, 340, 42, "TOPRIGHT", "TOPRIGHT", -15, -342), "")
 	text(region(f, 600, 24, "TOPLEFT", "TOPLEFT", 20, -384), "Custom image: local addon texture path", 13)
@@ -147,7 +155,14 @@ function O.Open()
 		local ok = pcall(function()
 			if not O.frame then create() end
 			O.Refresh()
+			-- Show the window last: every child is already painted.
 			O.frame:Show()
+			-- Pool display cycle: the preview frames follow their window
+			-- (the same Hide -> repaint -> Show sequence the covers use).
+			for _, name in ipairs({ "checker", "cover" }) do
+				local pf = O.previewFrames and O.previewFrames[name]
+				if pf and not pf:IsShown() then pf:Show() end
+			end
 		end)
 		if ok then return true end
 		if O.creating then pcall(O.creating.Hide, O.creating) end
